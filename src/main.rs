@@ -1,102 +1,109 @@
-mod vertex;
-use vertex::Vertex;
+//mod vertex;
+mod shader;
+mod teapot;
+mod view_matrix;
 
+use view_matrix::view_matrix;
+use event::VirtualKeyCode;
+use shader::create_shader_program;
 use std::{io::Cursor, time::{Duration, Instant}};
-use glium::{Display, Program, Surface, VertexBuffer, glutin::{ContextBuilder, event, event_loop::{ControlFlow, EventLoop}, window::WindowBuilder}, index::{NoIndices, PrimitiveType}, texture::{self, RawImage2d}, uniform, uniforms::EmptyUniforms};
+use glium::{BackfaceCullingMode, Display, Surface, VertexBuffer, glutin::{self, ContextBuilder, event::{self, ElementState}, event_loop::{ControlFlow, EventLoop}, window::WindowBuilder}, index::{NoIndices, PrimitiveType}, texture::{self, RawImage2d}, uniform, uniforms::EmptyUniforms};
 
 fn main() {
-    let vertex_shader_src = r#"
-        #version 140
-
-        in vec2 position;
-        in vec2 tex_coords;
-        out vec2 v_tex_coords;
-
-        uniform mat4 matrix;
-
-        void main() {
-            v_tex_coords = tex_coords;
-            gl_Position = matrix * vec4(position, 0.0, 1.0);
-        }
-    "#;
-
-    let fragment_shader_src = r#"
-        #version 140
-
-        in vec2 v_tex_coords;
-        out vec4 color;
-
-        uniform sampler2D tex;
-
-        void main() {
-            color = texture(tex, v_tex_coords);
-        }
-    "#;
-
     let event_loop = EventLoop::new();
-    let wb = WindowBuilder::new();
+    let mut wb = WindowBuilder::new();
+    wb = wb.with_title("Hello World!");
+
     let cb = ContextBuilder::new();
     let display = Display::new(wb, cb, &event_loop).unwrap();
 
     // compile shaders
-    let indices = NoIndices(PrimitiveType::TrianglesList);
-    let program = Program::from_source(&display, vertex_shader_src, fragment_shader_src, None).unwrap();
+    let program = create_shader_program(&display, "/Users/moffice/Documents/Rust/glium-demo/assets/shaders/vertex.vert", "/Users/moffice/Documents/Rust/glium-demo/assets/shaders/fragment.frag");
 
-    // triangle vertices
-    let vertex1 = Vertex { position: [-0.5, -0.5], tex_coords: [0.0, 0.0] };
-    let vertex2 = Vertex { position: [ 0.0,  0.5], tex_coords: [0.0, 1.0] };
-    let vertex3 = Vertex { position: [ 0.5, -0.25], tex_coords: [1.0, 0.0] };
-    let shape = vec![vertex1, vertex2, vertex3];
+    let positions = glium::VertexBuffer::new(&display, &teapot::VERTICES).unwrap();
+    let normals = glium::VertexBuffer::new(&display, &teapot::NORMALS).unwrap();
+    let indices = glium::IndexBuffer::new(&display, glium::index::PrimitiveType::TrianglesList, &teapot::INDICES).unwrap();
 
-    // create buffer
-    let vertex_buffer = VertexBuffer::new(&display, &shape).unwrap();
-    
-    // load image
-    let image = image::load(
-        Cursor::new(&include_bytes!("../assets/textures/grass.png")[..]), 
-        image::ImageFormat::Png
-    ).unwrap().to_rgb8();
+    // depth buffer
+    let cb = ContextBuilder::new().with_depth_buffer(24);
 
-    let image_dimensions = image.dimensions();
-    let image = RawImage2d::from_raw_rgb(image.into_raw(), image_dimensions);
-
-    println!("{:?} {} {}", image_dimensions, image.height, image.width);
-    let texture = glium::texture::texture2d::Texture2d::new(&display, image).unwrap();
-
-    let mut t: f32 = -0.5;
+    let mut moving_right = false;
+    let mut x = 0f32;
     event_loop.run(move |ev, _, control_flow| {
-        t += 0.0002;
-        if t > 0.5 {
-            t = -0.5;
-        }
-
         // draw calls
         let mut target = display.draw();
-        target.clear_color(0.0, 0.0, 1.0, 1.0);
+        target.clear_color_and_depth((0.0, 0.0, 1.0, 1.0), 1.0);
+
+        // perspective matrix
+        let perspective = {
+            let (width, height) = target.get_dimensions();
+            let aspect_ratio = height as f32 / width as f32;
+
+            let fov: f32 = 3.141592 / 3.0;
+            let zfar = 1024.0;
+            let znear = 0.1;
+
+            let f = 1.0 / (fov / 2.0).tan();
+
+            [
+                [f *   aspect_ratio   ,    0.0,              0.0              ,   0.0],
+                [         0.0         ,     f ,              0.0              ,   0.0],
+                [         0.0         ,    0.0,  (zfar+znear)/(zfar-znear)    ,   1.0],
+                [         0.0         ,    0.0, -(2.0*zfar*znear)/(zfar-znear),   0.0],
+            ]
+        };
+
+        if moving_right {
+            x += 0.01
+        }
+        let view = view_matrix(&[x, -1.0, 1.0], &[-2.0, 1.0, 1.0], &[0.0, 1.0, 0.0]);
 
         // calculate uniform matrix
         let uniforms = uniform! {
-            matrix: [
-                [t.cos(), t.sin(), 0.0, 0.0],
-                [-t.sin(), t.cos(), 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [t, 0.0, 0.0, 1.0],
+            model: [
+                [0.01, 0.0, 0.0, 0.0],
+                [0.0, 0.01, 0.0, 0.0],
+                [0.0, 0.0, 0.01, 0.0],
+                [0.0, 0.0, 2.0, 1.0f32]
             ],
-            tex: &texture
+            perspective: perspective,
+            view: view,
+            u_light: [1.4, 0.4, -0.7f32]
         };
 
-        target.draw(&vertex_buffer, &indices, &program, &uniforms, &Default::default()).unwrap();
+        let params = glium::DrawParameters {
+            depth: glium::Depth {
+                test: glium::draw_parameters::DepthTest::IfLess,
+                write: true,
+                ..Default::default()
+            },
+            backface_culling: BackfaceCullingMode::CullClockwise,
+            ..Default::default()
+        };
+
+        
+        target.draw((&positions, &normals), &indices, &program, &uniforms, &params).unwrap();
         target.finish().unwrap();
 
         // suspend thread for ~17ms for 60 FPS
-        let next_frame_time = Instant::now(); // + Duration::from_nanos(16_666_667);
+        let next_frame_time = Instant::now() + Duration::from_nanos(16_666_667);
         *control_flow = ControlFlow::WaitUntil(next_frame_time);
         // close window on close event
         match ev {
             event::Event::WindowEvent { event, .. } => match event {
+                event::WindowEvent::KeyboardInput { device_id: _, input, is_synthetic: _ } => {
+                    if let Some(key) = input.virtual_keycode {
+                        match key {
+                            VirtualKeyCode::Escape => *control_flow = ControlFlow::Exit,
+                            VirtualKeyCode::D => moving_right = input.state == ElementState::Pressed,
+                            _ => ()
+                        }
+                    }
+                    return
+                }
                 event::WindowEvent::CloseRequested => {
                     *control_flow = ControlFlow::Exit;
-                    return;
+                    return
                 },
                 _ => return
             },
