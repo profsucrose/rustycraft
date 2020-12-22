@@ -1,0 +1,13 @@
+[package]
+name = "opengl-demo"
+version = "0.1.0"
+authors = ["ProfSucrose <dr.blobbles@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cgmath = "0.16.1"
+gl = "0.10.0"
+glfw = "0.23.0"
+image = "0.19.0"
