@@ -1,11 +1,12 @@
 use std::fs;
 use std::ffi::CString;
+use cgmath::{Matrix, Matrix4, VectorSpace};
 use gl::types::*;
 use std::ptr;
 use std::str;
 
 pub struct Shader {
-    id: u32
+    pub id: u32
 }
 
 impl Shader {
@@ -84,5 +85,9 @@ impl Shader {
 
     pub unsafe fn set_float(&self, name: &str, value: f32) {
         gl::Uniform1f(gl::GetUniformLocation(self.id, CString::new(name).unwrap().as_ptr()), value)
+    }
+
+    pub unsafe fn set_mat4(&self, name: &str, value: Matrix4<f32>) {
+        gl::UniformMatrix4fv(gl::GetUniformLocation(self.id, CString::new(name).unwrap().as_ptr()), 1, gl::FALSE, value.as_ptr());
     }
 }
