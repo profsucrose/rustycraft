@@ -1,16 +1,14 @@
 mod models;         
 
-use std::{ffi::{CString, c_void}, mem, os::raw::c_char, path::Path, ptr::{self, null, null_mut}, sync::mpsc::Receiver, time::Instant};
+use std::{ffi::c_void, mem, ptr, sync::mpsc::Receiver, time::Instant};
 
-use cgmath::{Deg, Matrix4, Rad, Vector3, perspective, vec3};
+use cgmath::{Deg, Matrix4, Vector3, vec3};
 use cgmath::prelude::*;
-use glfw::{Action, Context, Key, Window, ffi::GLFWwindow};
+use glfw::{Action, Context, Key};
 use gl::types::*;
-use image::{GenericImage, ImageFormat};
-use models::{camera::{self, Camera}, shader::Shader, texture};
-use texture::Texture;
-use std::str;
-use std::ffi::CStr;
+use image::{ImageFormat};
+use models::{camera::Camera, shader::Shader, texture};
+use texture::load_texture;
 
 // settings
 const SCR_WIDTH: u32 = 800;
@@ -29,6 +27,7 @@ unsafe fn start() {
     glfw.window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
     #[cfg(target_os = "macos")]
     glfw.window_hint(glfw::WindowHint::OpenGlForwardCompat(true)); 
+    glfw.window_hint(glfw::WindowHint::Samples(Some(4))); 
 
     // glfw window creation
     let (mut window, events) = glfw.create_window(SCR_WIDTH, SCR_HEIGHT, "LearnOpenGL", glfw::WindowMode::Windowed)
@@ -55,6 +54,7 @@ unsafe fn start() {
 
     // depth buffer
     gl::Enable(gl::DEPTH_TEST);
+    gl::Enable(gl::MULTISAMPLE);
 
     let shader = Shader::new("assets/shaders/vertex.vert", "assets/shaders/fragment.frag");
 
@@ -162,18 +162,19 @@ unsafe fn start() {
         gl::STATIC_DRAW
     );
 
-    // gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
-
-    let _texture1 = Texture::new(
+    let texture1 = load_texture(
         "assets/textures/container.jpg", 
         gl::TEXTURE0, 
-        ImageFormat::JPEG,
         false
     );
-    let _texture2 = Texture::new(
+    let texture2 = load_texture(
         "assets/textures/awesomeface.png", 
         gl::TEXTURE1, 
-        ImageFormat::PNG,
+        true
+    );
+    let texture3 = load_texture(
+        "assets/textures/grass.png", 
+        gl::TEXTURE2, 
         true
     );
 
@@ -229,8 +230,9 @@ unsafe fn start() {
 
         // draw
         shader.use_program();
-        shader.set_int("texture1", 0);
-        shader.set_int("texture2", 1);
+        shader.set_uint("texture1", texture1);
+        shader.set_uint("texture2", texture2);
+        shader.set_uint("texture3", texture3);
 
         //gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null()); 
 

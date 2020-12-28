@@ -1,6 +1,6 @@
 use std::fs;
 use std::ffi::CString;
-use cgmath::{Matrix, Matrix4, VectorSpace};
+use cgmath::{Matrix, Matrix4};
 use gl::types::*;
 use std::ptr;
 use std::str;
@@ -75,19 +75,27 @@ impl Shader {
     }
 
     // uniforms
+    unsafe fn get_uniform_loc(&self, name: &str) -> i32 {
+        gl::GetUniformLocation(self.id, CString::new(name).unwrap().as_ptr())
+    }
+
     pub unsafe fn set_bool(&self, name: &str, value: bool) {
-        gl::Uniform1i(gl::GetUniformLocation(self.id, CString::new(name).unwrap().as_ptr()), value as i32)
+        self.set_int(name, value as i32)
     }
 
     pub unsafe fn set_int(&self, name: &str, value: i32) {
-        gl::Uniform1i(gl::GetUniformLocation(self.id, CString::new(name).unwrap().as_ptr()), value)
+        gl::Uniform1i(self.get_uniform_loc(name), value)
+    }
+
+    pub unsafe fn set_uint(&self, name: &str, value: u32) {
+        self.set_int(name, value as i32)
     }
 
     pub unsafe fn set_float(&self, name: &str, value: f32) {
-        gl::Uniform1f(gl::GetUniformLocation(self.id, CString::new(name).unwrap().as_ptr()), value)
+        gl::Uniform1f(self.get_uniform_loc(name), value)
     }
 
     pub unsafe fn set_mat4(&self, name: &str, value: Matrix4<f32>) {
-        gl::UniformMatrix4fv(gl::GetUniformLocation(self.id, CString::new(name).unwrap().as_ptr()), 1, gl::FALSE, value.as_ptr());
+        gl::UniformMatrix4fv(self.get_uniform_loc(name), 1, gl::FALSE, value.as_ptr());
     }
 }
