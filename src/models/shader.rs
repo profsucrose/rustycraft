@@ -1,9 +1,11 @@
 use std::fs;
 use std::ffi::CString;
-use cgmath::{Matrix, Matrix4};
+use cgmath::{Matrix, Matrix4, Vector3};
 use gl::types::*;
 use std::ptr;
 use std::str;
+
+use super::texture::Texture;
 
 pub struct Shader {
     pub id: u32
@@ -87,6 +89,10 @@ impl Shader {
         gl::Uniform1i(self.get_uniform_loc(name), value)
     }
 
+    pub unsafe fn set_texture(&self, name: &str, value: &Texture) {
+        self.set_uint(name, value.texture_id - gl::TEXTURE0)
+    }
+
     pub unsafe fn set_uint(&self, name: &str, value: u32) {
         self.set_int(name, value as i32)
     }
@@ -97,5 +103,9 @@ impl Shader {
 
     pub unsafe fn set_mat4(&self, name: &str, value: Matrix4<f32>) {
         gl::UniformMatrix4fv(self.get_uniform_loc(name), 1, gl::FALSE, value.as_ptr());
+    }
+
+    pub unsafe fn set_vec3(&self, name: &str, value: Vector3<f32>) {
+        gl::Uniform3f(self.get_uniform_loc(name), value.x, value.y, value.z);
     }
 }

@@ -1,14 +1,16 @@
-mod models;         
+mod models;  
+mod utils;       
 
-use std::{ffi::c_void, mem, ptr, sync::mpsc::Receiver, time::Instant};
+use std::{collections::HashMap, ffi::c_void, mem, ptr, sync::mpsc::Receiver, time::Instant};
 
-use cgmath::{Deg, Matrix4, Vector3, vec3};
+use cgmath::{Deg, Matrix4, Vector3, ortho, vec3};
 use cgmath::prelude::*;
+use freetype::Library;
 use glfw::{Action, Context, Key};
 use gl::types::*;
 use image::{ImageFormat};
-use models::{camera::Camera, shader::Shader, texture};
-use texture::load_texture;
+use models::{camera::Camera, character::Character, shader::Shader, texture::Texture, world::World};
+use utils::{character_map::gen_character_map, cube::cube_vertices, texture::load_texture};
 
 // settings
 const SCR_WIDTH: u32 = 800;
@@ -27,7 +29,7 @@ unsafe fn start() {
     glfw.window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
     #[cfg(target_os = "macos")]
     glfw.window_hint(glfw::WindowHint::OpenGlForwardCompat(true)); 
-    glfw.window_hint(glfw::WindowHint::Samples(Some(4))); 
+    //glfw.window_hint(glfw::WindowHint::Samples(Some(4))); 
 
     // glfw window creation
     let (mut window, events) = glfw.create_window(SCR_WIDTH, SCR_HEIGHT, "LearnOpenGL", glfw::WindowMode::Windowed)
@@ -42,85 +44,50 @@ unsafe fn start() {
     // capture mouse
     window.set_cursor_mode(glfw::CursorMode::Disabled);
 
-    // glfw: lock cursor
-    // glfw::ffi::glfwSetInputMode(
-    //     window.window_ptr(), 
-    //     glfw::ffi::CURSOR, 
-    //     glfw::ffi::CURSOR_DISABLED
-    // );
-
     // gl: load all OpenGL function pointers
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const _);
 
     // depth buffer
     gl::Enable(gl::DEPTH_TEST);
-    gl::Enable(gl::MULTISAMPLE);
+    gl::Enable(gl::BLEND);
+    gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
 
     let shader = Shader::new("assets/shaders/vertex.vert", "assets/shaders/fragment.frag");
+    let text_shader = Shader::new("assets/shaders/text_vertex.vert", "assets/shaders/text_fragment.frag");
 
     // vertices
-    let vertices: [f32; 180] = [
-        -0.5, -0.5, -0.5,  0.0, 0.0,
-         0.5, -0.5, -0.5,  1.0, 0.0,
-         0.5,  0.5, -0.5,  1.0, 1.0,
-         0.5,  0.5, -0.5,  1.0, 1.0,
-        -0.5,  0.5, -0.5,  0.0, 1.0,
-        -0.5, -0.5, -0.5,  0.0, 0.0,
-    
-        -0.5, -0.5,  0.5,  0.0, 0.0,
-         0.5, -0.5,  0.5,  1.0, 0.0,
-         0.5,  0.5,  0.5,  1.0, 1.0,
-         0.5,  0.5,  0.5,  1.0, 1.0,
-        -0.5,  0.5,  0.5,  0.0, 1.0,
-        -0.5, -0.5,  0.5,  0.0, 0.0,
-    
-        -0.5,  0.5,  0.5,  1.0, 0.0,
-        -0.5,  0.5, -0.5,  1.0, 1.0,
-        -0.5, -0.5, -0.5,  0.0, 1.0,
-        -0.5, -0.5, -0.5,  0.0, 1.0,
-        -0.5, -0.5,  0.5,  0.0, 0.0,
-        -0.5,  0.5,  0.5,  1.0, 0.0,
-    
-         0.5,  0.5,  0.5,  1.0, 0.0,
-         0.5,  0.5, -0.5,  1.0, 1.0,
-         0.5, -0.5, -0.5,  0.0, 1.0,
-         0.5, -0.5, -0.5,  0.0, 1.0,
-         0.5, -0.5,  0.5,  0.0, 0.0,
-         0.5,  0.5,  0.5,  1.0, 0.0,
-    
-        -0.5, -0.5, -0.5,  0.0, 1.0,
-         0.5, -0.5, -0.5,  1.0, 1.0,
-         0.5, -0.5,  0.5,  1.0, 0.0,
-         0.5, -0.5,  0.5,  1.0, 0.0,
-        -0.5, -0.5,  0.5,  0.0, 0.0,
-        -0.5, -0.5, -0.5,  0.0, 1.0,
-    
-        -0.5,  0.5, -0.5,  0.0, 1.0,
-         0.5,  0.5, -0.5,  1.0, 1.0,
-         0.5,  0.5,  0.5,  1.0, 0.0,
-         0.5,  0.5,  0.5,  1.0, 0.0,
-        -0.5,  0.5,  0.5,  0.0, 0.0,
-        -0.5,  0.5, -0.5,  0.0, 1.0
+    let vertices = cube_vertices();
+
+    let offsets: [Vector3<f32>; 3] = [
+        vec3(0.0,  0.0,  0.0),
+        vec3(1.0,  0.0,  0.0),
+        vec3(2.0,  0.0,  0.0)
     ];
 
-    let cube_positions: [Vector3<f32>; 10] = [
-        vec3( 0.0,  0.0,  0.0), 
-        vec3( 2.0,  5.0, -15.0), 
-        vec3(-1.5, -2.2, -2.5),  
-        vec3(-3.8, -2.0, -12.),  
-        vec3( 2.4, -0.4, -3.5),  
-        vec3(-1.7,  3.0, -7.5),  
-        vec3( 1.3, -2.0, -2.5),  
-        vec3( 1.5,  2.0, -2.5), 
-        vec3( 1.5,  0.2, -1.5), 
-        vec3(-1.3,  1.0, -1.5)  
-    ];
-
-    // let indices: [GLuint; 6] = [
-    //     0, 1, 3, // first triangle
-    //     1, 2, 3 // second triangle
-    // ];
-
+    let mut text_vao = 0;
+    gl::GenVertexArrays(1, &mut text_vao);
+    gl::BindVertexArray(text_vao);
+    let mut text_vbo = 0;
+    gl::GenBuffers(1, &mut text_vbo);
+    gl::BindBuffer(gl::ARRAY_BUFFER, text_vbo);
+    gl::BufferData(
+        gl::ARRAY_BUFFER, 
+        6 * 4 * std::mem::size_of::<GLfloat>() as isize,
+        ptr::null(),
+        gl::DYNAMIC_DRAW
+    );
+    gl::EnableVertexAttribArray(0);
+    gl::VertexAttribPointer(
+        0, 
+        4, 
+        gl::FLOAT, 
+        gl::FALSE, 
+        4 * std::mem::size_of::<GLfloat>() as i32, 
+        ptr::null()
+    );
+    gl::BindBuffer(gl::ARRAY_BUFFER, 0);
+    gl::BindVertexArray(0);
+    
     // create vertex array
     let mut vao = 0;
     gl::GenVertexArrays(1, &mut vao);
@@ -143,11 +110,14 @@ unsafe fn start() {
 
     // set vertex attribute pointers
     // position
-    gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, 5 * std::mem::size_of::<GLfloat>() as GLsizei, ptr::null());
+    gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, 6 * std::mem::size_of::<GLfloat>() as GLsizei, ptr::null());
     gl::EnableVertexAttribArray(0);
     // texcoords
-    gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE, 5 * std::mem::size_of::<GLfloat>() as GLsizei, (3 * std::mem::size_of::<GLfloat>()) as *const c_void);
+    gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE, 6 * std::mem::size_of::<GLfloat>() as GLsizei, (3 * std::mem::size_of::<GLfloat>()) as *const c_void);
     gl::EnableVertexAttribArray(1);
+    // block index
+    gl::VertexAttribPointer(2, 1, gl::FLOAT, gl::FALSE, 6 * std::mem::size_of::<GLfloat>() as GLsizei, (5 * std::mem::size_of::<GLfloat>()) as *const c_void);
+    gl::EnableVertexAttribArray(2);
 
     // create element buffer
     let mut ebo = 0;
@@ -162,23 +132,20 @@ unsafe fn start() {
         gl::STATIC_DRAW
     );
 
-    let texture1 = load_texture(
-        "assets/textures/container.jpg", 
-        gl::TEXTURE0, 
-        false
-    );
-    let texture2 = load_texture(
-        "assets/textures/awesomeface.png", 
+    let grass_texture = Texture::new(
+        "assets/textures/grass.png", 
         gl::TEXTURE1, 
         true
     );
-    let texture3 = load_texture(
-        "assets/textures/grass.png", 
-        gl::TEXTURE2, 
-        true
+    let dirt_texture = Texture::new(
+        "assets/textures/dirt.png", 
+        gl::TEXTURE0, 
+        false
     );
 
     let mut camera = Camera::new();
+    camera.position.y = 20.0;
+
     let mut instant = Instant::now();
 
     let mut last_x = 400.0;
@@ -186,6 +153,24 @@ unsafe fn start() {
 
     let mut first_mouse = true;
  
+    let world = World::new();
+
+    // init library
+    let lib = Library::init().unwrap();
+    
+    // load a font facer
+    let face = lib.new_face("assets/font/OldSchoolAdventures.ttf", 0).unwrap();
+
+    // font size
+    face.set_pixel_sizes(0, 20).unwrap();
+
+    // disable byte-alignment restriction
+    gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
+
+    let char_map = gen_character_map(&face);
+
+    let target_fps = 60.0;
+
     // render loop
     while !window.should_close() {
         let deltatime = instant.elapsed().as_millis() as f32;
@@ -203,42 +188,54 @@ unsafe fn start() {
         );
         camera.update_position(deltatime);
 
-        // clear
+        // clear buffers
         gl::ClearColor(0.2, 0.3, 0.3, 1.0);
         gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); 
 
-        // uniform
-        // let time = glfw.get_time();
-        // let green = time.sin() / 2.0 + 0.5;
-        // let vertex_color_loc = unsafe { gl::GetUniformLocation(shader_program, CString::new("ourColor").unwrap().as_ptr()) };
-        // unsafe { gl::Uniform4f(vertex_color_loc, 0.0, green as GLfloat, 0.0, 1.0) };
+        // draw text
+        render_text(
+            &text_shader, 
+            &char_map, 
+            text_vao, 
+            text_vbo, 
+            format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 
+            10.0, 
+            10.0, 
+            1.0, 
+            vec3(1.0, 0.0, 0.0)
+        );
+
+        // shader uniforms
+        shader.use_program();
+        // shader.set_texture("grass_texture", &grass_texture);
+        // shader.set_texture("dirt_texture", &dirt_texture);
 
         // transforms
         shader.set_mat4("view", camera.get_view());
         shader.set_mat4("projection", camera.get_projection());
-        for i in 0..10 {
-            let angle = 20.0 * (i as f32);
-            let model: Matrix4<f32> = Matrix4::<f32>::from_translation(cube_positions[i])
-                * Matrix4::<f32>::from_axis_angle(vec3(1.0, 0.3, 0.5).normalize(), Deg(angle));
+
+        // draw
+        gl::BindVertexArray(vao);
+        gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
+
+        dirt_texture.bind();
+        grass_texture.bind();
+        shader.set_texture("dirtTexture", &dirt_texture);
+        shader.set_texture("grassTexture", &grass_texture);
+
+        let model_vectors = world.to_model_vectors();
+        for (i, offset) in model_vectors.iter().enumerate() {
+            let model: Matrix4<f32> = Matrix4::<f32>::from_scale(0.6)
+                * Matrix4::<f32>::from_translation(*offset);
             shader.set_mat4("model", model);
             gl::DrawArrays(gl::TRIANGLES, 0, 36);
         }
 
-        // let mut transform: Matrix4<f32> = Matrix4::identity();
-        // transform = transform * Matrix4::<f32>::from_translation(vec3(0.5, -0.5, 0.0));
-        // transform = transform * Matrix4::<f32>::from_angle_z(Rad(glfw.get_time() as f32));
-
-        // draw
-        shader.use_program();
-        shader.set_uint("texture1", texture1);
-        shader.set_uint("texture2", texture2);
-        shader.set_uint("texture3", texture3);
-
-        //gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null()); 
-
-        // glfw: swap buffers and poll IO events
         window.swap_buffers();
         glfw.poll_events();
+
+        // hang thread for target FPS
+        while (instant.elapsed().as_millis() as f32) < (1000.0 / target_fps) {}
     }
 }
 
@@ -257,7 +254,6 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                 let y_offset = *last_y - y_pos;
                 *last_x = x_pos;
                 *last_y = y_pos;
-                //println!("Moved mouse: {} {}", x_offset, y_offset);
                 if *first_mouse {
                     *first_mouse = false;
                     return;
@@ -269,4 +265,48 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
             _ => ()
         }
     }
+}
+
+unsafe fn render_text(shader: &Shader, char_map: &HashMap<usize, Character>, vao: u32, vbo: u32, text: &str, mut x: f32, y: f32, scale: f32, color: Vector3<f32>) {
+    shader.use_program();
+    shader.set_mat4("projection", ortho(0.0, 800.0, 0.0, 600.0, -1.0, 100.0));
+    shader.set_vec3("textColor", color);
+    gl::ActiveTexture(gl::TEXTURE0);
+    gl::BindVertexArray(vao);
+
+    for c in text.bytes() {
+        let ch = &char_map[&(c as usize)];
+
+        let x_pos = x + (ch.bearing.x as f32) * scale;
+        let y_pos = y;// - ((ch.size.x - ch.bearing.y) as f32) * scale;
+
+        let w = (ch.size.x as f32) * scale;
+        let h = (ch.size.y as f32) * scale;
+
+        // generate vertices for charatcer
+        let vertices: [[f32; 4]; 6] = [
+            [ x_pos,     y_pos + h,  0.0, 0.0 ],
+            [ x_pos,     y_pos,      0.0, 1.0 ],
+            [ x_pos + w, y_pos,      1.0, 1.0 ],
+
+            [ x_pos,     y_pos + h,  0.0, 0.0 ],
+            [ x_pos + w, y_pos,      1.0, 1.0 ],
+            [ x_pos + w, y_pos + h,  1.0, 0.0 ]
+        ];
+
+        // render glyph texture over quad
+        gl::BindTexture(gl::TEXTURE_2D, ch.texture_id);
+
+        // update VBO memory
+        gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
+        gl::BufferSubData(gl::ARRAY_BUFFER, 0, std::mem::size_of_val(&vertices) as isize, vertices.as_ptr() as *const c_void);
+        gl::BindBuffer(gl::ARRAY_BUFFER, 0);
+
+        // render quad
+        gl::DrawArrays(gl::TRIANGLES, 0, 6);
+
+        x += ((ch.advance >> 6) as f32) * scale;
+    }
+    gl::BindVertexArray(0);
+    gl::BindTexture(gl::TEXTURE_2D, 0);
 }
