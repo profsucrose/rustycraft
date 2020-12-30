@@ -171,6 +171,7 @@ unsafe fn start() {
 
     let target_fps = 60.0;
 
+    let mut counter = 0;
     // render loop
     while !window.should_close() {
         let deltatime = instant.elapsed().as_millis() as f32;
@@ -204,6 +205,29 @@ unsafe fn start() {
             1.0, 
             vec3(1.0, 0.0, 0.0)
         );
+        render_text(
+            &text_shader, 
+            &char_map, 
+            text_vao, 
+            text_vbo, 
+            "Hello World!",
+            10.0, 
+            50.0, 
+            1.0, 
+            vec3(0.0, 1.0, 0.0)
+        );
+        render_text(
+            &text_shader, 
+            &char_map, 
+            text_vao, 
+            text_vbo, 
+            format!("{}", counter / 60).as_str(),
+            SCR_WIDTH as f32 / 2.0 - 50.0, 
+            SCR_HEIGHT as f32 - 50.0, 
+            0.37, 
+            vec3(0.0, 1.0, 0.0)
+        );
+        counter += 1;
 
         // shader uniforms
         shader.use_program();
