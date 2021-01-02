@@ -1,4 +1,4 @@
-use cgmath::{Angle, Deg, InnerSpace, Matrix, Matrix4, Point3, Rad, Vector3, perspective, vec3};
+use cgmath::{Angle, Deg, InnerSpace, Matrix4, Point3, Vector3, perspective, vec3};
 use glfw::{Action, Key};
 
 pub struct Camera {
@@ -11,11 +11,14 @@ pub struct Camera {
     pub moving_left: bool,
     pub yaw: f32,
     pub pitch: f32,
-    pub fov: f32
+    pub fov: f32,
+    pub screen_width: u32,
+    pub screen_height: u32,
+    pub speed: f32
 }
 
 impl Camera {
-    pub fn new() -> Camera {
+    pub fn new(screen_width: u32, screen_height: u32, speed: f32) -> Camera {
         Camera {
             position: vec3(0.0, 0.0, 3.0),
             front: vec3(0.0, 0.0, -1.0),
@@ -26,7 +29,10 @@ impl Camera {
             moving_left: false,
             pitch: 0.0,
             yaw: -90.0,
-            fov: 45.0
+            fov: 45.0,
+            screen_width,
+            screen_height,
+            speed
         }
     }
 
@@ -46,7 +52,7 @@ impl Camera {
     }
 
     pub fn update_position(&mut self, deltatime: f32) {
-        let speed = 0.005 * deltatime;
+        let speed = self.speed * deltatime;
         if self.moving_forward {
             self.position += speed * self.front
         } 
@@ -98,7 +104,7 @@ impl Camera {
     }
 
     pub fn get_projection(&self) -> Matrix4<f32> {
-        perspective(Deg(self.fov), 800.0 / 600.0, 0.1, 100.0)
+        perspective(Deg(self.fov), (self.screen_width as f32) / (self.screen_height as f32), 0.1, 1000.0)
     }    
 
     pub fn get_view(&self) -> Matrix4<f32> {

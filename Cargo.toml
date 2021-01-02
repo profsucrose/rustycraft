@@ -1,5 +1,5 @@
 [package]
-name = "opengl-demo"
+name = "rustycraft"
 version = "0.1.0"
 authors = ["ProfSucrose <dr.blobbles@gmail.com>"]
 edition = "2018"
@@ -12,3 +12,6 @@ gl = "0.10.0"
 glfw = "0.23.0"
 image = "0.19.0"
 freetype-rs = "0.26.0"
+noise = "0.7.0"
+libc = "0.2.81"
+rand = "0.8.0"

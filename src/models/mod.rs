@@ -1,7 +1,12 @@
 pub mod shader;
 pub mod camera;
 pub mod world;
-pub mod block;
-pub mod character;
+pub mod block_face_type;
 pub mod texture;
-pub mod vertex_array;
+pub mod text_renderer;
+pub mod face;
+pub mod block_type;
+pub mod block_face;
+pub mod chunk;
+pub mod coord_map;
+pub mod block_map;

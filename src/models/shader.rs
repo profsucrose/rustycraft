@@ -47,7 +47,7 @@ impl Shader {
         gl::GetShaderiv(fragment_shader, gl::COMPILE_STATUS, &mut success);
         if success != gl::TRUE as GLint {
             gl::GetShaderInfoLog(fragment_shader, 512, ptr::null_mut(), info_log.as_mut_ptr() as *mut GLchar);
-            println!("FRAGMENT SHADER COMPILATION FAILED\n{:?}", str::from_utf8(&info_log).unwrap());
+            println!("FRAGMENT SHADER COMPILATION FAILED\n{:?}", str::from_utf8(info_log.as_slice()).unwrap());
         }
 
         // shader program

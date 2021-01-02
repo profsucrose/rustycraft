@@ -1,3 +1,3 @@
-# opengl-rust
+# rustycraft
 
-Playing around with OpenGL in Rust
+Simple Minecraft/Voxal Engine clone written in Rust and OpenGL

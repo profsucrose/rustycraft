@@ -1,19 +1,14 @@
-mod models;  
-mod utils;       
+mod models;      
 
-use std::{collections::HashMap, ffi::c_void, mem, ptr, sync::mpsc::Receiver, time::Instant};
-
-use cgmath::{Deg, Matrix4, Vector3, ortho, vec3};
-use cgmath::prelude::*;
-use freetype::Library;
-use glfw::{Action, Context, Key};
+use std::{ffi::c_void, mem, path::Path, ptr, sync::mpsc::Receiver, time::Instant};
+use cgmath::{Matrix4, vec3};
+use glfw::{Action, Context, CursorMode, Key, MouseButton, PixelImage, WindowEvent};
 use gl::types::*;
-use image::{ImageFormat};
-use models::{camera::Camera, character::Character, shader::Shader, texture::Texture, world::World};
-use utils::{character_map::gen_character_map, cube::cube_vertices, texture::load_texture};
+use models::{block_type::BlockType, camera::Camera, shader::Shader, text_renderer::TextRenderer, texture::Texture, world::World};
+use image::{RgbaImage, GenericImage};
 
 // settings
-const SCR_WIDTH: u32 = 800;
+const SCR_WIDTH: u32 = 1000;
 const SCR_HEIGHT: u32 = 600;
 
 fn main() {
@@ -29,10 +24,9 @@ unsafe fn start() {
     glfw.window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
     #[cfg(target_os = "macos")]
     glfw.window_hint(glfw::WindowHint::OpenGlForwardCompat(true)); 
-    //glfw.window_hint(glfw::WindowHint::Samples(Some(4))); 
 
     // glfw window creation
-    let (mut window, events) = glfw.create_window(SCR_WIDTH, SCR_HEIGHT, "LearnOpenGL", glfw::WindowMode::Windowed)
+    let (mut window, events) = glfw.create_window(SCR_WIDTH, SCR_HEIGHT, "RustyCraft", glfw::WindowMode::Windowed)
         .expect("Failed to create GLFW window");
 
     window.make_current();
@@ -40,51 +34,47 @@ unsafe fn start() {
     window.set_cursor_pos_polling(true);
     window.set_framebuffer_size_polling(true);
     window.set_scroll_polling(true);
+    window.set_mouse_button_polling(true);
+    window.set_title("RustyCraft");
+
+    // set window icon; note that on MacOS this does nothing
+    // as the icon must be set via .app bundling
+    let icon = image::open(&Path::new("assets/textures/icon.png"))
+        .expect("Failed to load texture");
+    let pixels = icon.raw_pixels().iter().map(|pixel| *pixel as u32).collect();
+    let glfw_image = PixelImage {
+        width: icon.width(),
+        height: icon.height(),
+        pixels
+    };
+    window.set_icon_from_pixels(vec![glfw_image]);
 
     // capture mouse
-    window.set_cursor_mode(glfw::CursorMode::Disabled);
+    let mut mouse_captured = true;
+    window.set_cursor_mode(CursorMode::Disabled);
 
     // gl: load all OpenGL function pointers
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const _);
 
     // depth buffer
     gl::Enable(gl::DEPTH_TEST);
-    gl::Enable(gl::BLEND);
-    gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
 
     let shader = Shader::new("assets/shaders/vertex.vert", "assets/shaders/fragment.frag");
-    let text_shader = Shader::new("assets/shaders/text_vertex.vert", "assets/shaders/text_fragment.frag");
 
-    // vertices
-    let vertices = cube_vertices();
-
-    let offsets: [Vector3<f32>; 3] = [
-        vec3(0.0,  0.0,  0.0),
-        vec3(1.0,  0.0,  0.0),
-        vec3(2.0,  0.0,  0.0)
-    ];
-
+    // create VAO for text rendering
     let mut text_vao = 0;
     gl::GenVertexArrays(1, &mut text_vao);
     gl::BindVertexArray(text_vao);
+
+    // allocate empty buffer for text
     let mut text_vbo = 0;
     gl::GenBuffers(1, &mut text_vbo);
     gl::BindBuffer(gl::ARRAY_BUFFER, text_vbo);
-    gl::BufferData(
-        gl::ARRAY_BUFFER, 
-        6 * 4 * std::mem::size_of::<GLfloat>() as isize,
-        ptr::null(),
-        gl::DYNAMIC_DRAW
-    );
+    gl::BufferData(gl::ARRAY_BUFFER, 6 * 4 * std::mem::size_of::<GLfloat>() as isize, ptr::null(), gl::DYNAMIC_DRAW);
     gl::EnableVertexAttribArray(0);
-    gl::VertexAttribPointer(
-        0, 
-        4, 
-        gl::FLOAT, 
-        gl::FALSE, 
-        4 * std::mem::size_of::<GLfloat>() as i32, 
-        ptr::null()
-    );
+    gl::VertexAttribPointer(0, 4, gl::FLOAT, gl::FALSE, 4 * std::mem::size_of::<GLfloat>() as i32, ptr::null());
+
+    // reset to defaults
     gl::BindBuffer(gl::ARRAY_BUFFER, 0);
     gl::BindVertexArray(0);
     
@@ -95,83 +85,50 @@ unsafe fn start() {
     // bind VAO
     gl::BindVertexArray(vao);
 
-    // create vertex buffer
+    // create VBO
     let mut vbo = 0;
     gl::GenBuffers(1, &mut vbo);
 
-    // copy vertices data to buffer
+    // bind
     gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-    gl::BufferData(
-        gl::ARRAY_BUFFER, 
-        mem::size_of_val(&vertices) as isize, 
-        &vertices[0] as *const f32 as *const c_void, 
-        gl::STATIC_DRAW
-    );
+
+    // create world object
+    let mut world = World::new(15);
+    println!("Initialized new world");
 
     // set vertex attribute pointers
     // position
-    gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, 6 * std::mem::size_of::<GLfloat>() as GLsizei, ptr::null());
+    gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, 5 * std::mem::size_of::<GLfloat>() as GLsizei, ptr::null());
     gl::EnableVertexAttribArray(0);
     // texcoords
-    gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE, 6 * std::mem::size_of::<GLfloat>() as GLsizei, (3 * std::mem::size_of::<GLfloat>()) as *const c_void);
+    gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE, 5 * std::mem::size_of::<GLfloat>() as GLsizei, (3 * std::mem::size_of::<GLfloat>()) as *const c_void);
     gl::EnableVertexAttribArray(1);
-    // block index
-    gl::VertexAttribPointer(2, 1, gl::FLOAT, gl::FALSE, 6 * std::mem::size_of::<GLfloat>() as GLsizei, (5 * std::mem::size_of::<GLfloat>()) as *const c_void);
-    gl::EnableVertexAttribArray(2);
 
-    // create element buffer
-    let mut ebo = 0;
-    gl::GenBuffers(1, &mut ebo);
-
-    gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ebo);
-
-    gl::BufferData(
-        gl::ARRAY_BUFFER, 
-        (vertices.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
-        &vertices[0] as *const f32 as *const c_void,
-        gl::STATIC_DRAW
-    );
-
-    let grass_texture = Texture::new(
-        "assets/textures/grass.png", 
-        gl::TEXTURE1, 
-        true
-    );
-    let dirt_texture = Texture::new(
-        "assets/textures/dirt.png", 
+    let texture_map = Texture::new(
+        "assets/textures/textures.png", 
         gl::TEXTURE0, 
         false
     );
 
-    let mut camera = Camera::new();
+    let mut camera = Camera::new(SCR_WIDTH, SCR_HEIGHT, 0.008);
     camera.position.y = 20.0;
 
     let mut instant = Instant::now();
 
+    // last mouse x and y coords
     let mut last_x = 400.0;
     let mut last_y = 300.0;
 
+    // store if the mouse has entered the window to prevent
+    // initially yanking the camera
     let mut first_mouse = true;
- 
-    let world = World::new();
 
-    // init library
-    let lib = Library::init().unwrap();
-    
-    // load a font facer
-    let face = lib.new_face("assets/font/OldSchoolAdventures.ttf", 0).unwrap();
+    // init text renderer
+    let text_renderer = TextRenderer::new(SCR_WIDTH, SCR_HEIGHT, "assets/font/OldSchoolAdventures.ttf", "assets/shaders/text_vertex.vert", "assets/shaders/text_fragment.frag");
 
-    // font size
-    face.set_pixel_sizes(0, 20).unwrap();
-
-    // disable byte-alignment restriction
-    gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
-
-    let char_map = gen_character_map(&face);
-
+    // target fps
     let target_fps = 60.0;
 
-    let mut counter = 0;
     // render loop
     while !window.should_close() {
         let deltatime = instant.elapsed().as_millis() as f32;
@@ -181,8 +138,9 @@ unsafe fn start() {
         process_events(
             &mut window, 
             &events, 
+            &mut mouse_captured,
+            &mut world,
             &mut camera, 
-            deltatime, 
             &mut last_x, 
             &mut last_y, 
             &mut first_mouse
@@ -193,66 +151,35 @@ unsafe fn start() {
         gl::ClearColor(0.2, 0.3, 0.3, 1.0);
         gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); 
 
-        // draw text
-        render_text(
-            &text_shader, 
-            &char_map, 
-            text_vao, 
-            text_vbo, 
-            format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 
-            10.0, 
-            10.0, 
-            1.0, 
-            vec3(1.0, 0.0, 0.0)
-        );
-        render_text(
-            &text_shader, 
-            &char_map, 
-            text_vao, 
-            text_vbo, 
-            "Hello World!",
-            10.0, 
-            50.0, 
-            1.0, 
-            vec3(0.0, 1.0, 0.0)
-        );
-        render_text(
-            &text_shader, 
-            &char_map, 
-            text_vao, 
-            text_vbo, 
-            format!("{}", counter / 60).as_str(),
-            SCR_WIDTH as f32 / 2.0 - 50.0, 
-            SCR_HEIGHT as f32 - 50.0, 
-            0.37, 
-            vec3(0.0, 1.0, 0.0)
-        );
-        counter += 1;
+        // draw tex
+        text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 0.0, 0.0));
+        text_renderer.render_text(format!("x: {:.0}", camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, vec3(1.0, 0.0, 0.0));
+        text_renderer.render_text(format!("y: {:.0}", camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, vec3(1.0, 0.0, 0.0));
+        text_renderer.render_text(format!("z: {:.0}", camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 0.0, 0.0));
 
         // shader uniforms
         shader.use_program();
-        // shader.set_texture("grass_texture", &grass_texture);
-        // shader.set_texture("dirt_texture", &dirt_texture);
-
         // transforms
         shader.set_mat4("view", camera.get_view());
         shader.set_mat4("projection", camera.get_projection());
+        shader.set_mat4("model", Matrix4::<f32>::from_scale(1.0));
+
+        // bind texture
+        texture_map.bind();
+        shader.set_texture("texture_map", &texture_map);
 
         // draw
         gl::BindVertexArray(vao);
         gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-
-        dirt_texture.bind();
-        grass_texture.bind();
-        shader.set_texture("dirtTexture", &dirt_texture);
-        shader.set_texture("grassTexture", &grass_texture);
-
-        let model_vectors = world.to_model_vectors();
-        for (i, offset) in model_vectors.iter().enumerate() {
-            let model: Matrix4<f32> = Matrix4::<f32>::from_scale(0.6)
-                * Matrix4::<f32>::from_translation(*offset);
-            shader.set_mat4("model", model);
-            gl::DrawArrays(gl::TRIANGLES, 0, 36);
+        let meshes = world.get_world_mesh_from_perspective(camera.position.x as i32, camera.position.z as i32);
+        for mesh in meshes.iter() {
+            gl::BufferData(
+                gl::ARRAY_BUFFER, 
+                (mesh.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
+                mesh.as_ptr() as *const c_void, 
+                gl::DYNAMIC_DRAW
+            );
+            gl::DrawArrays(gl::TRIANGLES, 0, mesh.len() as GLint);
         }
 
         window.swap_buffers();
@@ -263,16 +190,16 @@ unsafe fn start() {
     }
 }
 
-fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::WindowEvent)>, camera: &mut Camera, deltatime: f32, last_x: &mut f32, last_y: &mut f32, first_mouse: &mut bool) {
+fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::WindowEvent)>, mouse_captured: &mut bool, world: &mut World, camera: &mut Camera, last_x: &mut f32, last_y: &mut f32, first_mouse: &mut bool) {
     for (_, event) in glfw::flush_messages(events) {
         match event {
-            glfw::WindowEvent::FramebufferSize(width, height) => {
+            WindowEvent::FramebufferSize(width, height) => {
                 unsafe { gl::Viewport(0, 0, width, height) }
             },
-            glfw::WindowEvent::Scroll(_, y_offset) => {
+            WindowEvent::Scroll(_, y_offset) => {
                 camera.scroll_callback(y_offset as f32);
             },
-            glfw::WindowEvent::CursorPos(xpos, ypos) => {
+            WindowEvent::CursorPos(xpos, ypos) => {
                 let (x_pos, y_pos) = (xpos as f32, ypos as f32);
                 let x_offset = x_pos - *last_x;
                 let y_offset = *last_y - y_pos;
@@ -282,55 +209,47 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                     *first_mouse = false;
                     return;
                 }
+
+                if !*mouse_captured {
+                    return;
+                }
+
                 camera.mouse_callback(x_offset, y_offset);
             },
-            glfw::WindowEvent::Key(Key::Escape, _, Action::Press, _) => window.set_should_close(true),
-            glfw::WindowEvent::Key(key, _, action, _) => camera.process_keyboard(key, action),
+            WindowEvent::Key(Key::F2, _, Action::Press, _) => {
+                let width = SCR_WIDTH;
+                let height = SCR_HEIGHT;
+                let mut data = vec![0u8; (width * height * 4) as usize].into_boxed_slice();
+                unsafe { gl::ReadPixels(0, height as i32, width as i32, height as i32, gl::RGBA, gl::UNSIGNED_BYTE, data.as_mut_ptr() as *mut c_void); }
+
+                let image = RgbaImage::from_raw(width, height, data.to_vec())
+                    .expect("Unable to convert pixel array to RgbImage");
+                image.save("screenshot.png").expect("Unable to write image to file");
+                println!("Saved screenshot");
+            },
+            WindowEvent::MouseButton(MouseButton::Button1, Action::Press, _) => {
+                println!("Mouse button event");
+                let result = world.raymarch_block(&camera.position, &camera.front);
+                if let Some((x, y, z)) = result {
+                    world.set_block(x, y, z, BlockType::Log);
+                    world.recalculate_mesh_from_perspective(camera.position.x as i32, camera.position.z as i32);
+                }
+                println!("{:?}", result);
+            },
+            WindowEvent::Key(Key::LeftShift, _, Action::Press, _) => camera.speed = 1.0,
+            WindowEvent::Key(Key::LeftShift, _, Action::Release, _) => camera.speed = 0.008,
+            WindowEvent::Key(Key::Escape, _, Action::Press, _) => window.set_should_close(true),
+            WindowEvent::Key(Key::LeftSuper, _, Action::Press, _) => {
+                *mouse_captured = !*mouse_captured;
+                window.set_cursor_mode(match *mouse_captured {
+                    true => CursorMode::Disabled,
+                    false => CursorMode::Normal
+                });
+            },
+            WindowEvent::Key(key, _, action, _) => {
+                camera.process_keyboard(key, action);
+            },
             _ => ()
         }
     }
-}
-
-unsafe fn render_text(shader: &Shader, char_map: &HashMap<usize, Character>, vao: u32, vbo: u32, text: &str, mut x: f32, y: f32, scale: f32, color: Vector3<f32>) {
-    shader.use_program();
-    shader.set_mat4("projection", ortho(0.0, 800.0, 0.0, 600.0, -1.0, 100.0));
-    shader.set_vec3("textColor", color);
-    gl::ActiveTexture(gl::TEXTURE0);
-    gl::BindVertexArray(vao);
-
-    for c in text.bytes() {
-        let ch = &char_map[&(c as usize)];
-
-        let x_pos = x + (ch.bearing.x as f32) * scale;
-        let y_pos = y;// - ((ch.size.x - ch.bearing.y) as f32) * scale;
-
-        let w = (ch.size.x as f32) * scale;
-        let h = (ch.size.y as f32) * scale;
-
-        // generate vertices for charatcer
-        let vertices: [[f32; 4]; 6] = [
-            [ x_pos,     y_pos + h,  0.0, 0.0 ],
-            [ x_pos,     y_pos,      0.0, 1.0 ],
-            [ x_pos + w, y_pos,      1.0, 1.0 ],
-
-            [ x_pos,     y_pos + h,  0.0, 0.0 ],
-            [ x_pos + w, y_pos,      1.0, 1.0 ],
-            [ x_pos + w, y_pos + h,  1.0, 0.0 ]
-        ];
-
-        // render glyph texture over quad
-        gl::BindTexture(gl::TEXTURE_2D, ch.texture_id);
-
-        // update VBO memory
-        gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-        gl::BufferSubData(gl::ARRAY_BUFFER, 0, std::mem::size_of_val(&vertices) as isize, vertices.as_ptr() as *const c_void);
-        gl::BindBuffer(gl::ARRAY_BUFFER, 0);
-
-        // render quad
-        gl::DrawArrays(gl::TRIANGLES, 0, 6);
-
-        x += ((ch.advance >> 6) as f32) * scale;
-    }
-    gl::BindVertexArray(0);
-    gl::BindTexture(gl::TEXTURE_2D, 0);
 }

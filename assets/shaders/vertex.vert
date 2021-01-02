@@ -5,6 +5,7 @@ layout (location = 2) in float aBlockIndex;
   
 out vec2 TexCoord;
 out float blockIndex;
+out vec3 position;
 
 uniform mat4 model;
 uniform mat4 view;
@@ -14,4 +15,5 @@ void main() {
     gl_Position = projection * view * model * vec4(aPos, 1.0);
     TexCoord = aTexCoord;
     blockIndex = aBlockIndex;
+    position = aPos;
 }    
