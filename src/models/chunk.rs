@@ -5,7 +5,7 @@ use noise::{NoiseFn, OpenSimplex};
 use crate::models::{block_face::BlockFace, block_type::BlockType, face::Face};
 use rand::prelude::*;
 
-use super::block_map::BlockMap;
+use super::{block_map::BlockMap, block_type::block_to_uv};
 
 pub const CHUNK_SIZE: usize = 16;
 pub const CHUNK_HEIGHT: usize = 256;
@@ -65,53 +65,56 @@ impl Chunk {
     }
 
     fn gen_mesh(&mut self) -> Rc<Vec<f32>> {
+        let instant = std::time::Instant::now();
         let mut vertices = Vec::new();
         for x in 0..CHUNK_SIZE {
             for z in 0..CHUNK_SIZE {
-                for y in 0..256 {
+                for y in 0..20 {
                     let block = self.blocks.get(x, y, z);
                     if block == BlockType::Air {
                         continue;
                     }
 
-                    let x = x as i32;
-                    let y = y as i32;
-                    let z = z as i32;
-                    let world_x = x + self.x;
+                    let world_x = ((x as i32) + self.x) as f32;
                     let world_y = y as f32;
-                    let world_z = z + self.z;
-                    if self.air_at(x + 1, y, z) {
-                        let face = BlockFace::new(block, Face::Right);
-                        vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
-                    }
+                    let world_z = ((z as i32) + self.z) as f32;
+                    vertices.push(world_x);
+                    vertices.push(world_y);
+                    vertices.push(world_z);
+                    vertices.push(block_to_uv(block));
+                    // if self.air_at(x + 1, y, z) {
+                    //     let face = BlockFace::new(block, Face::Right);
+                    //     vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
+                    // }
 
-                    if self.air_at(x - 1, y, z) {
-                        let face = BlockFace::new(block, Face::Left);
-                        vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
-                    }
+                    // if self.air_at(x - 1, y, z) {
+                    //     let face = BlockFace::new(block, Face::Left);
+                    //     vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
+                    // }
 
-                    if self.air_at(x, y + 1, z) {
-                        let face = BlockFace::new(block, Face::Top);
-                        vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
-                    }
+                    // if self.air_at(x, y + 1, z) {
+                    //     let face = BlockFace::new(block, Face::Top);
+                    //     vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
+                    // }
 
-                    if self.air_at(x, y - 1, z) {
-                        let face = BlockFace::new(block, Face::Bottom);
-                        vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
-                    }
+                    // if self.air_at(x, y - 1, z) {
+                    //     let face = BlockFace::new(block, Face::Bottom);
+                    //     vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
+                    // }
 
-                    if self.air_at(x, y, z + 1) {
-                        let face = BlockFace::new(block, Face::Back);
-                        vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
-                    }
+                    // if self.air_at(x, y, z + 1) {
+                    //     let face = BlockFace::new(block, Face::Back);
+                    //     vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
+                    // }
                     
-                    if self.air_at(x, y, z - 1) {
-                        let face = BlockFace::new(block, Face::Front);
-                        vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
-                    }
+                    // if self.air_at(x, y, z - 1) {
+                    //     let face = BlockFace::new(block, Face::Front);
+                    //     vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
+                    // }
                 }
             }
         }
+        println!("Took {} to generate mesh for new chunk", instant.elapsed().as_millis());
         self.mesh = Rc::new(vertices);
         self.mesh.clone()
     }

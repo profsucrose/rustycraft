@@ -92,24 +92,30 @@ unsafe fn start() {
     // bind
     gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
 
-    let mut points = Vec::new();
-    for x in 0..100 {
-        for z in 0..100 {
-            for y in 0..10 {
-                points.push(x as f32);
-                points.push(y as f32);
-                points.push(z as f32);
-                points.push(2.0);
-            }
-        }
-    }
+    // let mut points = Vec::new();
+    // for x in 0..100 {
+    //     for z in 0..100 {
+    //         for y in 0..256 {
+    //             points.push(x as f32);
+    //             points.push(y as f32);
+    //             points.push(z as f32);
+    //             let mut block_index = 2.0;
+    //             if y == 255 {
+    //                 block_index = 1.0;
+    //             } else if y > 253 {
+    //                 block_index = 0.0;
+    //             }
+    //             points.push(2.0);
+    //         }
+    //     }
+    // }
 
-    gl::BufferData(
-        gl::ARRAY_BUFFER, 
-        (points.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
-        points.as_ptr() as *const c_void, 
-        gl::DYNAMIC_DRAW
-    ); 
+    // gl::BufferData(
+    //     gl::ARRAY_BUFFER, 
+    //     (points.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
+    //     points.as_ptr() as *const c_void, 
+    //     gl::DYNAMIC_DRAW
+    // ); 
 
     // set vertex attribute pointers
     // position
@@ -117,14 +123,14 @@ unsafe fn start() {
     gl::EnableVertexAttribArray(0);
 
     // block index
-    gl::VertexAttribPointer(1, 1, gl::FLOAT, gl::FALSE, 4 * std::mem::size_of::<GLfloat>() as GLsizei, std::mem::size_of::<GLfloat>() as *const c_void); 
+    gl::VertexAttribPointer(1, 1, gl::FLOAT, gl::FALSE, 4 * std::mem::size_of::<GLfloat>() as GLsizei, (3 * std::mem::size_of::<GLfloat>()) as *const c_void); 
     gl::EnableVertexAttribArray(1);
     // texcoords
     // gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE, 5 * std::mem::size_of::<GLfloat>() as GLsizei, (3 * std::mem::size_of::<GLfloat>()) as *const c_void);
     // gl::EnableVertexAttribArray(1);
 
     // create world object
-    let mut world = World::new(10);
+    let mut world = World::new(20);
     println!("Initialized new world");
 
     let texture_map = Texture::new(
@@ -194,8 +200,16 @@ unsafe fn start() {
         // draw
         gl::BindVertexArray(vao);
         gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-
-        gl::DrawArrays(gl::POINTS, 0, 100 * 100 * 10);
+        let meshes = world.get_world_mesh_from_perspective(camera.position.x as i32, camera.position.z as i32);
+        for mesh in meshes.iter() {
+            gl::BufferData(
+                gl::ARRAY_BUFFER, 
+                (mesh.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
+                mesh.as_ptr() as *const c_void, 
+                gl::DYNAMIC_DRAW
+            );
+            gl::DrawArrays(gl::POINTS, 0, (mesh.len() / 4) as GLint);
+        }
 
         window.swap_buffers();
         glfw.poll_events();
@@ -255,11 +269,11 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
             WindowEvent::Key(Key::LeftShift, _, Action::Release, _) => camera.speed = 0.008,
             WindowEvent::Key(Key::Escape, _, Action::Press, _) => window.set_should_close(true),
             WindowEvent::Key(Key::LeftSuper, _, Action::Press, _) => {
-                *mouse_captured = !*mouse_captured;
-                window.set_cursor_mode(match *mouse_captured {
-                    true => CursorMode::Disabled,
-                    false => CursorMode::Normal
-                });
+                // *mouse_captured = !*mouse_captured;
+                // window.set_cursor_mode(match *mouse_captured {
+                //     true => CursorMode::Disabled,
+                //     false => CursorMode::Normal
+                // });
             },
             WindowEvent::Key(key, _, action, _) => {
                 camera.process_keyboard(key, action);
