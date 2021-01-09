@@ -95,10 +95,12 @@ unsafe fn start() {
     let mut points = Vec::new();
     for x in 0..100 {
         for z in 0..100 {
-            points.push(x as f32);
-            points.push(0.0);
-            points.push(z as f32);
-            points.push(2.0);
+            for y in 0..10 {
+                points.push(x as f32);
+                points.push(y as f32);
+                points.push(z as f32);
+                points.push(2.0);
+            }
         }
     }
 
@@ -108,10 +110,6 @@ unsafe fn start() {
         points.as_ptr() as *const c_void, 
         gl::DYNAMIC_DRAW
     ); 
-
-    // create world object
-    let mut world = World::new(10);
-    println!("Initialized new world");
 
     // set vertex attribute pointers
     // position
@@ -124,6 +122,10 @@ unsafe fn start() {
     // texcoords
     // gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE, 5 * std::mem::size_of::<GLfloat>() as GLsizei, (3 * std::mem::size_of::<GLfloat>()) as *const c_void);
     // gl::EnableVertexAttribArray(1);
+
+    // create world object
+    let mut world = World::new(10);
+    println!("Initialized new world");
 
     let texture_map = Texture::new(
         "assets/textures/textures.png", 
@@ -193,7 +195,7 @@ unsafe fn start() {
         gl::BindVertexArray(vao);
         gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
 
-        gl::DrawArrays(gl::POINTS, 0, 100 * 100);
+        gl::DrawArrays(gl::POINTS, 0, 100 * 100 * 10);
 
         window.swap_buffers();
         glfw.poll_events();
