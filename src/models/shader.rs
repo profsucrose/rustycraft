@@ -13,6 +13,71 @@ pub struct Shader {
 
 impl Shader {
     pub unsafe fn new(vertex_path: &str, fragment_path: &str) -> Shader {
+        let (vertex_shader, fragment_shader) = Shader::gen_shader_program_with_vert_and_frag(vertex_path, fragment_path);
+
+        // shader program
+        let id = gl::CreateProgram();
+        gl::AttachShader(id, vertex_shader);
+        gl::AttachShader(id, fragment_shader);
+        Shader::link_shader_program(id);
+
+        // delete shaders as they're no longer needed
+        gl::DeleteShader(vertex_shader);
+        gl::DeleteShader(fragment_shader);
+
+        Shader { id }
+    }
+
+    pub unsafe fn new_with_geom(vertex_path: &str, fragment_path: &str, geometry_path: &str) -> Shader {
+        let (vertex_shader, fragment_shader) = Shader::gen_shader_program_with_vert_and_frag(vertex_path, fragment_path);
+        let geometry_source = fs::read_to_string(geometry_path)
+            .expect(format!("Could not read vertex shader at path {}", geometry_path).as_str());
+        let geometry_source_cstring = CString::new(geometry_source.as_bytes())
+            .expect("Could not convert vertex shader source to CString");
+
+        // compile geometry shader and check for errors
+        let geometry_shader = gl::CreateShader(gl::GEOMETRY_SHADER);
+        gl::ShaderSource(geometry_shader, 1, &CString::new(geometry_source_cstring.as_bytes()).unwrap().as_ptr(), ptr::null());
+        gl::CompileShader(geometry_shader);
+
+        let mut success = gl::FALSE as GLint;
+        let mut info_log = Vec::with_capacity(512);
+        info_log.set_len(512 - 1); // subtract 1 to skip trailing null char
+        gl::GetShaderiv(geometry_shader, gl::COMPILE_STATUS, &mut success);
+        if success != gl::TRUE as GLint {
+            gl::GetShaderInfoLog(geometry_shader, 512, ptr::null_mut(), info_log.as_mut_ptr() as *mut GLchar);
+            println!("GEOMETRY SHADER COMPILATION FAILED\n{:?}", info_log.iter().map(|c| *c as u8 as char).collect::<String>());
+        }
+
+        // shader program
+        let id = gl::CreateProgram();
+        gl::AttachShader(id, vertex_shader);
+        gl::AttachShader(id, fragment_shader);
+        gl::AttachShader(id, geometry_shader);
+        Shader::link_shader_program(id);
+        
+        // delete shaders as they're no longer needed
+        gl::DeleteShader(vertex_shader);
+        gl::DeleteShader(fragment_shader);
+        gl::DeleteShader(geometry_shader);
+
+        Shader { id }
+    }
+
+    unsafe fn link_shader_program(id: GLuint) {
+        gl::LinkProgram(id);
+
+        let mut success = gl::FALSE as GLint;
+        let mut info_log = Vec::with_capacity(512);
+        info_log.set_len(512 - 1); // subtract 1 to skip trailing null char
+        gl::GetProgramiv(id, gl::LINK_STATUS, &mut success);
+        if success != gl::TRUE as GLint {
+            gl::GetShaderInfoLog(id, 512, ptr::null_mut(), info_log.as_mut_ptr() as *mut GLchar);
+            println!("SHADER PROGRAM LINKING FAILED\n{:?}", str::from_utf8(&info_log).unwrap());
+        }
+    }    
+
+    unsafe fn gen_shader_program_with_vert_and_frag(vertex_path: &str, fragment_path: &str) -> (GLuint, GLuint) {
         let vertex_source = fs::read_to_string(vertex_path)
             .expect(format!("Could not read vertex shader at path {}", vertex_path).as_str());
         let fragment_source = fs::read_to_string(fragment_path)
@@ -50,26 +115,7 @@ impl Shader {
             println!("FRAGMENT SHADER COMPILATION FAILED\n{:?}", str::from_utf8(info_log.as_slice()).unwrap());
         }
 
-        // shader program
-        let id = gl::CreateProgram();
-        gl::AttachShader(id, vertex_shader);
-        gl::AttachShader(id, fragment_shader);
-        gl::LinkProgram(id);
-
-        let mut success = gl::FALSE as GLint;
-        let mut info_log = Vec::with_capacity(512);
-        info_log.set_len(512 - 1); // subtract 1 to skip trailing null char
-        gl::GetProgramiv(id, gl::LINK_STATUS, &mut success);
-        if success != gl::TRUE as GLint {
-            gl::GetShaderInfoLog(id, 512, ptr::null_mut(), info_log.as_mut_ptr() as *mut GLchar);
-            println!("SHADER PROGRAM LINKING FAILED\n{:?}", str::from_utf8(&info_log).unwrap());
-        }
-
-        // delete shaders as they're no longer needed
-        gl::DeleteShader(vertex_shader);
-        gl::DeleteShader(fragment_shader);
-
-        Shader { id }
+        (vertex_shader, fragment_shader)
     }
 
     pub unsafe fn use_program(&self) {

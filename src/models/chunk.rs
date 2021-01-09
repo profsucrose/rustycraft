@@ -28,8 +28,8 @@ impl Chunk {
             for z in 0..CHUNK_SIZE {
                 let simplex_x = (x as i32 + x_offset) as f64;
                 let simplex_z = (z as i32 + z_offset) as f64;
-                let noise = simplex.get([simplex_x / 100.0, simplex_z / 100.0]);
-                let height = ((noise + 1.0) * amplitude).round() as usize;
+                let noise = simplex.get([simplex_x / 10.0, simplex_z / 10.0]); // octave_simplex(simplex_x / 10.0, simplex_z / 10.0, 10, 1.0, simplex.clone());
+                let height = ((noise + 1.0) * amplitude) as usize;
                 for y in 0..height {
                     let distance_to_top = height - y;
                     let block = match distance_to_top {
@@ -137,4 +137,21 @@ impl Chunk {
 
         self.blocks.get(x as usize, y as usize, z as usize) == BlockType::Air
     }
+}
+
+
+fn octave_simplex(x: f32, z: f32, octaves: i32, persistence: f32, simplex: Rc<OpenSimplex>) -> f32 {
+    let mut total = 0f32;
+    let mut frequency = 1.0;
+    let mut amplitude = 1.0;
+    let mut max_value = 0.0; 
+    for _ in 0..octaves {
+        total += (simplex.get([(x * frequency) as f64, (z * frequency) as f64]) * (amplitude as f64)) as f32;
+        
+        max_value += amplitude;
+        
+        amplitude *= persistence;
+        frequency *= 2.0;
+    }
+    total / max_value
 }

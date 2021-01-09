@@ -20,7 +20,7 @@ pub struct Camera {
 impl Camera {
     pub fn new(screen_width: u32, screen_height: u32, speed: f32) -> Camera {
         Camera {
-            position: vec3(0.0, 0.0, 3.0),
+            position: vec3(0.0, 0.0, 0.0),
             front: vec3(0.0, 0.0, -1.0),
             up: vec3(0.0, 1.0, 0.0),
             moving_forward: false,

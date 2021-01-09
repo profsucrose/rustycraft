@@ -59,7 +59,7 @@ unsafe fn start() {
     // depth buffer
     gl::Enable(gl::DEPTH_TEST);
 
-    let shader = Shader::new("assets/shaders/vertex.vert", "assets/shaders/fragment.frag");
+    let shader = Shader::new_with_geom("assets/shaders/vertex.vert", "assets/shaders/fragment.frag", "assets/shaders/geometry.geom");
 
     // create VAO for text rendering
     let mut text_vao = 0;
@@ -92,17 +92,38 @@ unsafe fn start() {
     // bind
     gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
 
+    let mut points = Vec::new();
+    for x in 0..100 {
+        for z in 0..100 {
+            points.push(x as f32);
+            points.push(0.0);
+            points.push(z as f32);
+            points.push(2.0);
+        }
+    }
+
+    gl::BufferData(
+        gl::ARRAY_BUFFER, 
+        (points.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
+        points.as_ptr() as *const c_void, 
+        gl::DYNAMIC_DRAW
+    ); 
+
     // create world object
-    let mut world = World::new(15);
+    let mut world = World::new(10);
     println!("Initialized new world");
 
     // set vertex attribute pointers
     // position
-    gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, 5 * std::mem::size_of::<GLfloat>() as GLsizei, ptr::null());
+    gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, 4 * std::mem::size_of::<GLfloat>() as GLsizei, ptr::null());
     gl::EnableVertexAttribArray(0);
-    // texcoords
-    gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE, 5 * std::mem::size_of::<GLfloat>() as GLsizei, (3 * std::mem::size_of::<GLfloat>()) as *const c_void);
+
+    // block index
+    gl::VertexAttribPointer(1, 1, gl::FLOAT, gl::FALSE, 4 * std::mem::size_of::<GLfloat>() as GLsizei, std::mem::size_of::<GLfloat>() as *const c_void); 
     gl::EnableVertexAttribArray(1);
+    // texcoords
+    // gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE, 5 * std::mem::size_of::<GLfloat>() as GLsizei, (3 * std::mem::size_of::<GLfloat>()) as *const c_void);
+    // gl::EnableVertexAttribArray(1);
 
     let texture_map = Texture::new(
         "assets/textures/textures.png", 
@@ -111,7 +132,7 @@ unsafe fn start() {
     );
 
     let mut camera = Camera::new(SCR_WIDTH, SCR_HEIGHT, 0.008);
-    camera.position.y = 20.0;
+//    camera.position.y = 0.0;
 
     let mut instant = Instant::now();
 
@@ -148,14 +169,14 @@ unsafe fn start() {
         camera.update_position(deltatime);
 
         // clear buffers
-        gl::ClearColor(0.2, 0.3, 0.3, 1.0);
+        gl::ClearColor(29.0 / 255.0, 104.0 / 255.0, 224.0 / 255.0, 1.0);
         gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); 
 
         // draw tex
         text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 0.0, 0.0));
-        text_renderer.render_text(format!("x: {:.0}", camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, vec3(1.0, 0.0, 0.0));
-        text_renderer.render_text(format!("y: {:.0}", camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, vec3(1.0, 0.0, 0.0));
-        text_renderer.render_text(format!("z: {:.0}", camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 0.0, 0.0));
+        text_renderer.render_text(format!("x: {:.2}", camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, vec3(1.0, 0.0, 0.0));
+        text_renderer.render_text(format!("y: {:.2}", camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, vec3(1.0, 0.0, 0.0));
+        text_renderer.render_text(format!("z: {:.2}", camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 0.0, 0.0));
 
         // shader uniforms
         shader.use_program();
@@ -171,16 +192,8 @@ unsafe fn start() {
         // draw
         gl::BindVertexArray(vao);
         gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-        let meshes = world.get_world_mesh_from_perspective(camera.position.x as i32, camera.position.z as i32);
-        for mesh in meshes.iter() {
-            gl::BufferData(
-                gl::ARRAY_BUFFER, 
-                (mesh.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
-                mesh.as_ptr() as *const c_void, 
-                gl::DYNAMIC_DRAW
-            );
-            gl::DrawArrays(gl::TRIANGLES, 0, mesh.len() as GLint);
-        }
+
+        gl::DrawArrays(gl::POINTS, 0, 100 * 100);
 
         window.swap_buffers();
         glfw.poll_events();
@@ -236,7 +249,7 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                 }
                 println!("{:?}", result);
             },
-            WindowEvent::Key(Key::LeftShift, _, Action::Press, _) => camera.speed = 1.0,
+            WindowEvent::Key(Key::LeftShift, _, Action::Press, _) => camera.speed = 0.05,
             WindowEvent::Key(Key::LeftShift, _, Action::Release, _) => camera.speed = 0.008,
             WindowEvent::Key(Key::Escape, _, Action::Press, _) => window.set_should_close(true),
             WindowEvent::Key(Key::LeftSuper, _, Action::Press, _) => {
