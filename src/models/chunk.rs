@@ -26,9 +26,9 @@ impl Chunk {
         let z_offset = z_offset * 16;
         for x in 0..CHUNK_SIZE {
             for z in 0..CHUNK_SIZE {
-                let simplex_x = (x as i32 + x_offset) as f64;
-                let simplex_z = (z as i32 + z_offset) as f64;
-                let noise = simplex.get([simplex_x / 10.0, simplex_z / 10.0]); // octave_simplex(simplex_x / 10.0, simplex_z / 10.0, 10, 1.0, simplex.clone());
+                let simplex_x = (x as i32 + x_offset) as f32;
+                let simplex_z = (z as i32 + z_offset) as f32;
+                let noise = gen_heightmap(simplex_x, simplex_z, simplex.clone());
                 let height = ((noise + 1.0) * amplitude) as usize;
                 for y in 0..height {
                     let distance_to_top = height - y;
@@ -65,11 +65,11 @@ impl Chunk {
     }
 
     fn gen_mesh(&mut self) -> Rc<Vec<f32>> {
-        let instant = std::time::Instant::now();
         let mut vertices = Vec::new();
         for x in 0..CHUNK_SIZE {
             for z in 0..CHUNK_SIZE {
-                for y in 0..20 {
+                for y in 0..50 {
+
                     let block = self.blocks.get(x, y, z);
                     if block == BlockType::Air {
                         continue;
@@ -81,40 +81,23 @@ impl Chunk {
                     vertices.push(world_x);
                     vertices.push(world_y);
                     vertices.push(world_z);
-                    vertices.push(block_to_uv(block));
-                    // if self.air_at(x + 1, y, z) {
-                    //     let face = BlockFace::new(block, Face::Right);
-                    //     vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
-                    // }
-
-                    // if self.air_at(x - 1, y, z) {
-                    //     let face = BlockFace::new(block, Face::Left);
-                    //     vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
-                    // }
-
-                    // if self.air_at(x, y + 1, z) {
-                    //     let face = BlockFace::new(block, Face::Top);
-                    //     vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
-                    // }
-
-                    // if self.air_at(x, y - 1, z) {
-                    //     let face = BlockFace::new(block, Face::Bottom);
-                    //     vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
-                    // }
-
-                    // if self.air_at(x, y, z + 1) {
-                    //     let face = BlockFace::new(block, Face::Back);
-                    //     vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
-                    // }
-                    
-                    // if self.air_at(x, y, z - 1) {
-                    //     let face = BlockFace::new(block, Face::Front);
-                    //     vertices.append(&mut face.transform(world_x as f32, world_y as f32, world_z as f32).vertices.to_vec());
-                    // }
+                  
+                    for i in 0..6 {
+                        let face = match i {
+                            0 => Face::Front,
+                            1 => Face::Right,
+                            2 => Face::Back,
+                            3 => Face::Bottom,
+                            4 => Face::Left,
+                            5 => Face::Top,
+                            _ => panic!("Attempted to convert invalid index to face when setting vertex texture UV indices")
+                        };
+                        vertices.push(block_to_uv(block, face));
+                    }
                 }
             }
         }
-        println!("Took {} to generate mesh for new chunk", instant.elapsed().as_millis());
+
         self.mesh = Rc::new(vertices);
         self.mesh.clone()
     }
@@ -125,6 +108,7 @@ impl Chunk {
 
     pub fn set_block(&mut self, x: usize, y: usize, z: usize, block: BlockType) {
         self.blocks.set(x, y, z, block);
+        self.gen_mesh();
     }
 
     pub fn air_at(&self, x: i32, y: i32, z: i32) -> bool {
@@ -142,6 +126,19 @@ impl Chunk {
     }
 }
 
+
+fn gen_heightmap(x: f32, z: f32, simplex: Rc<OpenSimplex>) -> f32 {
+    let height = 2.5 * sample_simplex(x / 35.0, z / 35.0, simplex.clone())
+    + 0.5 * sample_simplex(x / 10.0, z / 10.0, simplex.clone())
+    + 0.25 * sample_simplex(x / 4.0, z / 4.0, simplex.clone());
+    height.powf(1.3)
+}
+
+fn sample_simplex(x: f32, z: f32, simplex: Rc<OpenSimplex>) -> f32 {
+    // noise library returns noise value in range -1.0 to 1.0,
+    // so shift over to 0.0 to 1.0 range
+    ((simplex.get([x as f64, z as f64]) + 1.0) / 2.0) as f32
+}
 
 fn octave_simplex(x: f32, z: f32, octaves: i32, persistence: f32, simplex: Rc<OpenSimplex>) -> f32 {
     let mut total = 0f32;

@@ -46,7 +46,7 @@ impl Shader {
         gl::GetShaderiv(geometry_shader, gl::COMPILE_STATUS, &mut success);
         if success != gl::TRUE as GLint {
             gl::GetShaderInfoLog(geometry_shader, 512, ptr::null_mut(), info_log.as_mut_ptr() as *mut GLchar);
-            println!("GEOMETRY SHADER COMPILATION FAILED\n{:?}", info_log.iter().map(|c| *c as u8 as char).collect::<String>());
+            println!("GEOMETRY SHADER COMPILATION FAILED\n{:?}", stringify_vec_u8(info_log));
         }
 
         // shader program
@@ -73,7 +73,7 @@ impl Shader {
         gl::GetProgramiv(id, gl::LINK_STATUS, &mut success);
         if success != gl::TRUE as GLint {
             gl::GetShaderInfoLog(id, 512, ptr::null_mut(), info_log.as_mut_ptr() as *mut GLchar);
-            println!("SHADER PROGRAM LINKING FAILED\n{:?}", str::from_utf8(&info_log).unwrap());
+            println!("SHADER PROGRAM LINKING FAILED\n{:?}", stringify_vec_u8(info_log));
         }
     }    
 
@@ -98,7 +98,7 @@ impl Shader {
         gl::GetShaderiv(vertex_shader, gl::COMPILE_STATUS, &mut success);
         if success != gl::TRUE as GLint {
             gl::GetShaderInfoLog(vertex_shader, 512, ptr::null_mut(), info_log.as_mut_ptr() as *mut GLchar);
-            println!("VERTEX SHADER COMPILATION FAILED\n{:?}", str::from_utf8(&info_log).unwrap());
+            println!("VERTEX SHADER COMPILATION FAILED\n{:?}", stringify_vec_u8(info_log));
         }
 
         // compile fragment shader and check for errors
@@ -112,7 +112,7 @@ impl Shader {
         gl::GetShaderiv(fragment_shader, gl::COMPILE_STATUS, &mut success);
         if success != gl::TRUE as GLint {
             gl::GetShaderInfoLog(fragment_shader, 512, ptr::null_mut(), info_log.as_mut_ptr() as *mut GLchar);
-            println!("FRAGMENT SHADER COMPILATION FAILED\n{:?}", str::from_utf8(info_log.as_slice()).unwrap());
+            println!("FRAGMENT SHADER COMPILATION FAILED\n{:?}", stringify_vec_u8(info_log));
         }
 
         (vertex_shader, fragment_shader)
@@ -154,4 +154,8 @@ impl Shader {
     pub unsafe fn set_vec3(&self, name: &str, value: Vector3<f32>) {
         gl::Uniform3f(self.get_uniform_loc(name), value.x, value.y, value.z);
     }
+}
+
+fn stringify_vec_u8(info_log: Vec<u8>) -> String {
+    info_log.iter().map(|c| *c as u8 as char).collect::<String>()
 }

@@ -10,3 +10,6 @@ pub mod block_face;
 pub mod chunk;
 pub mod coord_map;
 pub mod block_map;
+pub mod vertex_array;
+pub mod vertex_buffer;
+pub mod cube_outline;

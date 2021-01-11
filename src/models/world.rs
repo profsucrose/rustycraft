@@ -151,15 +151,17 @@ impl World {
 
     pub fn raymarch_block(&mut self, position: &Vector3<f32>, direction: &Vector3<f32>) -> Option<(i32, i32, i32)> {
         let mut check_position = *position;
-        let mut range = 5;
+        let mut range = 50;
+        let direction = direction * 0.1;
         loop {
             check_position = check_position + direction;
-            let x = check_position.x.floor() as i32;
-            let y = check_position.y.floor() as i32;
-            let z = check_position.z.floor() as i32;
+            let x = check_position.x.round() as i32;
+            let y = check_position.y.round() as i32;
+            let z = check_position.z.round() as i32;
             let block = self.get_block(x, y, z);
             if let Some(block) = block {
                 if block != BlockType::Air {
+                    println!("Block at {} {} {} is {:?}", x, y, z, block);
                     return Some((x, y, z))
                 }
             }

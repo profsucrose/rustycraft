@@ -4,7 +4,7 @@ use std::{ffi::c_void, mem, path::Path, ptr, sync::mpsc::Receiver, time::Instant
 use cgmath::{Matrix4, vec3};
 use glfw::{Action, Context, CursorMode, Key, MouseButton, PixelImage, WindowEvent};
 use gl::types::*;
-use models::{block_type::BlockType, camera::Camera, shader::Shader, text_renderer::TextRenderer, texture::Texture, world::World};
+use models::{block_type::BlockType, camera::Camera, shader::Shader, text_renderer::TextRenderer, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer, world::World};
 use image::{RgbaImage, GenericImage};
 
 // settings
@@ -59,78 +59,63 @@ unsafe fn start() {
     // depth buffer
     gl::Enable(gl::DEPTH_TEST);
 
+    // blending
+    gl::Enable(gl::BLEND);
+    gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+
     let shader = Shader::new_with_geom("assets/shaders/vertex.vert", "assets/shaders/fragment.frag", "assets/shaders/geometry.geom");
 
-    // create VAO for text rendering
-    let mut text_vao = 0;
-    gl::GenVertexArrays(1, &mut text_vao);
-    gl::BindVertexArray(text_vao);
+    // crosshairs
+    // let crosshairs_texture = Texture::new("assets/textures/crosshairs.png", gl::TEXTURE0, true);
+    // let crosshairs_vao = VertexArray::new();
+    // crosshairs_vao.bind();
 
-    // allocate empty buffer for text
-    let mut text_vbo = 0;
-    gl::GenBuffers(1, &mut text_vbo);
-    gl::BindBuffer(gl::ARRAY_BUFFER, text_vbo);
-    gl::BufferData(gl::ARRAY_BUFFER, 6 * 4 * std::mem::size_of::<GLfloat>() as isize, ptr::null(), gl::DYNAMIC_DRAW);
-    gl::EnableVertexAttribArray(0);
-    gl::VertexAttribPointer(0, 4, gl::FLOAT, gl::FALSE, 4 * std::mem::size_of::<GLfloat>() as i32, ptr::null());
+    // let crosshairs_shader = Shader::new("assets/shaders/crosshairs.vert", "assets/shaders/crosshairs.frag");
+    // let mut crosshairs_vbo = VertexBuffer::new();
+    // crosshairs_vbo.bind_to_array_buffer();
+    
+    // position
+    // crosshairs_vbo.add_float_attribute(2, 4);
 
-    // reset to defaults
-    gl::BindBuffer(gl::ARRAY_BUFFER, 0);
-    gl::BindVertexArray(0);
+    // texcoords
+    // crosshairs_vbo.add_float_attribute(2, 4);
+
+    // let crosshairs_vertices: Vec<f32> = vec![
+    //      0.01,  0.01, 1.0, 1.0, // top right
+    //      0.01, -0.01, 1.0, 0.0, // bottom right
+    //     -0.01,  0.01, 0.0, 1.0, // top left
+    //     -0.01, -0.01, 0.0, 0.0, // bottom left
+    // ];
+
+    // let middle_x = (SCR_WIDTH / 2) as f32;
+    // let middle_y = (SCR_HEIGHT / 2) as f32;
+
+    // let crosshairs_vertices: Vec<f32> = vec![
+    //       middle_x + 15.0,    middle_y + 15.0, 1.0, 1.0, // top right
+    //       middle_x + 15.0,    middle_y, 1.0, 0.0, // bottom right
+    //       middle_x,    15.0, 0.0, middle_y + 15.0, // top left
+    //       middle_x,    0.0, 0.0, middle_y // bottom left
+    // ];
+    // crosshairs_vbo.set_data(&crosshairs_vertices, gl::STATIC_DRAW);
     
     // create vertex array
-    let mut vao = 0;
-    gl::GenVertexArrays(1, &mut vao);
-
-    // bind VAO
-    gl::BindVertexArray(vao);
+    let vao = VertexArray::new(); 
+    vao.bind();
 
     // create VBO
-    let mut vbo = 0;
-    gl::GenBuffers(1, &mut vbo);
-
-    // bind
-    gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
-
-    // let mut points = Vec::new();
-    // for x in 0..100 {
-    //     for z in 0..100 {
-    //         for y in 0..256 {
-    //             points.push(x as f32);
-    //             points.push(y as f32);
-    //             points.push(z as f32);
-    //             let mut block_index = 2.0;
-    //             if y == 255 {
-    //                 block_index = 1.0;
-    //             } else if y > 253 {
-    //                 block_index = 0.0;
-    //             }
-    //             points.push(2.0);
-    //         }
-    //     }
-    // }
-
-    // gl::BufferData(
-    //     gl::ARRAY_BUFFER, 
-    //     (points.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
-    //     points.as_ptr() as *const c_void, 
-    //     gl::DYNAMIC_DRAW
-    // ); 
+    let mut vbo = VertexBuffer::new();
+    vbo.bind();
 
     // set vertex attribute pointers
     // position
-    gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, 4 * std::mem::size_of::<GLfloat>() as GLsizei, ptr::null());
-    gl::EnableVertexAttribArray(0);
-
-    // block index
-    gl::VertexAttribPointer(1, 1, gl::FLOAT, gl::FALSE, 4 * std::mem::size_of::<GLfloat>() as GLsizei, (3 * std::mem::size_of::<GLfloat>()) as *const c_void); 
-    gl::EnableVertexAttribArray(1);
-    // texcoords
-    // gl::VertexAttribPointer(1, 2, gl::FLOAT, gl::FALSE, 5 * std::mem::size_of::<GLfloat>() as GLsizei, (3 * std::mem::size_of::<GLfloat>()) as *const c_void);
-    // gl::EnableVertexAttribArray(1);
+    vbo.add_float_attribute(3, 9);
+    for _ in 0..6 {
+        // block indices attributes
+        vbo.add_float_attribute(1, 9);
+    }
 
     // create world object
-    let mut world = World::new(20);
+    let mut world = World::new(10);
     println!("Initialized new world");
 
     let texture_map = Texture::new(
@@ -140,7 +125,6 @@ unsafe fn start() {
     );
 
     let mut camera = Camera::new(SCR_WIDTH, SCR_HEIGHT, 0.008);
-//    camera.position.y = 0.0;
 
     let mut instant = Instant::now();
 
@@ -186,6 +170,18 @@ unsafe fn start() {
         text_renderer.render_text(format!("y: {:.2}", camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, vec3(1.0, 0.0, 0.0));
         text_renderer.render_text(format!("z: {:.2}", camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 0.0, 0.0));
 
+        // draw crosshairs
+        // crosshairs_shader.use_program();
+        // crosshairs_shader.set_mat4(
+        //     "orthographic", 
+        // cgmath::ortho(0.0, SCR_WIDTH as f32, 0.0, SCR_HEIGHT as f32, -1.0, 100.0)
+        // );
+        // crosshairs_texture.bind();
+        // crosshairs_shader.set_texture("tex", &crosshairs_texture);
+        // crosshairs_vao.bind();
+        // crosshairs_vbo.bind_to_array_buffer();
+        // gl::DrawArrays(gl::TRIANGLE_STRIP, 0, 4);
+
         // shader uniforms
         shader.use_program();
         // transforms
@@ -198,19 +194,30 @@ unsafe fn start() {
         shader.set_texture("texture_map", &texture_map);
 
         // draw
-        gl::BindVertexArray(vao);
-        gl::BindBuffer(gl::ARRAY_BUFFER, vbo);
+        vao.bind();
+        vbo.bind();
+
         let meshes = world.get_world_mesh_from_perspective(camera.position.x as i32, camera.position.z as i32);
         for mesh in meshes.iter() {
-            gl::BufferData(
-                gl::ARRAY_BUFFER, 
-                (mesh.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
-                mesh.as_ptr() as *const c_void, 
-                gl::DYNAMIC_DRAW
-            );
-            gl::DrawArrays(gl::POINTS, 0, (mesh.len() / 4) as GLint);
+            vbo.set_data(&mesh, gl::DYNAMIC_DRAW);
+            gl::DrawArrays(gl::POINTS, 0, (mesh.len() / 9) as GLint);
         }
 
+        let result = world.raymarch_block(&camera.position, &camera.front);
+        if let Some((x, y, z)) = result {
+            let x = x as f32;
+            let y = y as f32; 
+            let z = z as f32;
+            let mut mesh = vec![x, y, z];
+            for _ in 0..6 {
+                mesh.push(7.0);
+            }
+            println!("Rendering cube at {} {} {}", x, y, z);
+            shader.set_mat4("model", Matrix4::from_scale(1.001));
+
+            vbo.set_data(&mesh, gl::DYNAMIC_DRAW);
+            gl::DrawArrays(gl::POINTS, 0, 1);
+        }
         window.swap_buffers();
         glfw.poll_events();
 
@@ -257,23 +264,24 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                 println!("Saved screenshot");
             },
             WindowEvent::MouseButton(MouseButton::Button1, Action::Press, _) => {
-                println!("Mouse button event");
+                // println!("Mouse button event");
                 let result = world.raymarch_block(&camera.position, &camera.front);
                 if let Some((x, y, z)) = result {
                     world.set_block(x, y, z, BlockType::Log);
-                    world.recalculate_mesh_from_perspective(camera.position.x as i32, camera.position.z as i32);
+                    world.recalculate_mesh_from_perspective((camera.position.x as i32) % 16, (camera.position.z as i32) % 16)
                 }
-                println!("{:?}", result);
+                println!("Raymarched block from pos: {:?}", result);
             },
             WindowEvent::Key(Key::LeftShift, _, Action::Press, _) => camera.speed = 0.05,
             WindowEvent::Key(Key::LeftShift, _, Action::Release, _) => camera.speed = 0.008,
             WindowEvent::Key(Key::Escape, _, Action::Press, _) => window.set_should_close(true),
             WindowEvent::Key(Key::LeftSuper, _, Action::Press, _) => {
-                // *mouse_captured = !*mouse_captured;
-                // window.set_cursor_mode(match *mouse_captured {
-                //     true => CursorMode::Disabled,
-                //     false => CursorMode::Normal
-                // });
+                println!("Toggling window focus");
+                *mouse_captured = !*mouse_captured;
+                window.set_cursor_mode(match *mouse_captured {
+                    true => CursorMode::Disabled,
+                    false => CursorMode::Normal
+                });
             },
             WindowEvent::Key(key, _, action, _) => {
                 camera.process_keyboard(key, action);
