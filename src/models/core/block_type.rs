@@ -7,7 +7,10 @@ pub enum BlockType {
     Log,
     Leaves,
     Stone,
-    Air
+    Air,
+    Orange,
+    Black,
+    DarkOrange
 }
 
 pub fn block_to_uv(block_face_type: BlockType, face: Face) -> f32 {
@@ -24,6 +27,9 @@ pub fn block_to_uv(block_face_type: BlockType, face: Face) -> f32 {
             _ => 4.0
         },
         BlockType::Leaves => 5.0,
+        BlockType::Orange => 8.0,
+        BlockType::DarkOrange => 9.0,
+        BlockType::Black => 10.0,
         BlockType::Air => panic!("Attempted to get block uv for BlockType::Air"),
     }
 }

@@ -1,4 +1,4 @@
-use crate::models::block_type::BlockType;
+use super::block_type::BlockType;
 
 use super::chunk::{CHUNK_HEIGHT, CHUNK_SIZE};
 

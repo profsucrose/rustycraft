@@ -11,13 +11,14 @@ out vec2 TexCoord;
 in VS_OUT {
     float blockIndex;
     float[6] blockUVIndices;
+    int facesToDraw;
 } gs_in[];  
 
 const vec4 cubeVerts[8] = vec4[8] (
-    vec4(-0.5, -0.5, -0.5, 1.0), //LB  0
-    vec4(-0.5,  0.5, -0.5, 1.0), //LT  1
-    vec4( 0.5, -0.5, -0.5, 1.0), //RB  2
-    vec4( 0.5,  0.5, -0.5, 1.0), //RT  3
+    vec4(-0.5, -0.5, -0.5, 1.0), // LB  0
+    vec4(-0.5,  0.5, -0.5, 1.0), // LT  1
+    vec4( 0.5, -0.5, -0.5, 1.0), // RB  2
+    vec4( 0.5,  0.5, -0.5, 1.0), // RT  3
 
     vec4(-0.5, -0.5, 0.5, 1.0), // LB  4
     vec4(-0.5,  0.5, 0.5, 1.0), // LT  5
@@ -33,14 +34,6 @@ const int cubeIndices[24] = int[24] (
     1, 0, 5, 4, // left
     3, 1, 7, 5  // top
 ); 
-
-/*
-    vec4(-0.5,  0.5, -0.5, 1.0), //LT  1
-    vec4(-0.5, -0.5, -0.5, 1.0), //LB  0
-    vec4(-0.5,  0.5, 0.5, 1.0), // LT  5
-    vec4(-0.5, -0.5, 0.5, 1.0), // LB  4
-
-*/
 
 const vec2 cubeUVs[24] = vec2[24] (
     // front
@@ -92,22 +85,21 @@ void emit_vertex(vec4 local_position, vec2 local_uv, int face_index) {
     vec4 world_position = gl_in[0].gl_Position;
     gl_Position = projection * view * vec4((world_position + model * local_position).xyz, 1.0);
     float blockIndex = gs_in[0].blockUVIndices[face_index];
-    //vec2 global_uv_offset;
-    /*
-    0, 1, 2, 3, // front
-    7, 6, 3, 2, // right
-    7, 5, 6, 4, // back
-    4, 0, 6, 2, // bottom
-    1, 0, 5, 4, // left
-    3, 1, 7, 5  // top
-    */
-    
+
     TexCoord = local_uv + vec2(float(int(blockIndex) % 6), float(int(blockIndex) / 6));
     EmitVertex();
 }
 
 void build_cube() {
+    int faces = gs_in[0].facesToDraw;
+
     for (int i = 0; i < 6; i++) {
+        // unpack bit to check if face is obfuscated 
+        // and should be drawn or not
+        if ((faces >> (7 - i) & 1) != 1) {
+            continue;
+        }
+
         int indices_index = i * 4;
         emit_vertex(cubeVerts[cubeIndices[indices_index]],     cubeUVs[indices_index],     i); // bottom-left
         emit_vertex(cubeVerts[cubeIndices[indices_index + 1]], cubeUVs[indices_index + 1], i); // bottom-left

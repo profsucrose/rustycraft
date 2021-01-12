@@ -3,8 +3,7 @@ use std::rc::Rc;
 use cgmath::Vector3;
 use noise::{OpenSimplex};
 
-use crate::models::coord_map::CoordMap;
-use super::{block_type::BlockType, chunk::Chunk};
+use super::{block_type::BlockType, chunk::Chunk, coord_map::CoordMap, face::Face};
 
 #[derive(Clone)]
 pub struct World {
@@ -35,10 +34,11 @@ impl World {
     //     mesh
     // }
 
-    pub fn get_world_mesh_from_perspective(&mut self, player_x: i32, player_z: i32) -> &Vec<Rc<Vec<f32>>> {
+    pub fn get_world_mesh_from_perspective(&mut self, player_x: i32, player_z: i32, force: bool) -> &Vec<Rc<Vec<f32>>> {
         let player_chunk_x = player_x / 16;
         let player_chunk_z = player_z / 16;
-        if self.mesh.len() > 0 
+        if !force 
+            && self.mesh.len() > 0 
             && self.player_chunk_x == player_chunk_x 
             && self.player_chunk_z == player_chunk_z {
             return &self.mesh
@@ -106,68 +106,95 @@ impl World {
     }
 
     pub fn get_block(&self, world_x: i32, world_y: i32, world_z: i32) -> Option<BlockType> {
-        let chunk_x = world_x / 16;
-        let chunk_z = world_z / 16;
+        let mut chunk_x = (world_x + if world_x < 0 { 1 } else { 0 }) / 16;
+        if world_x < 0 {
+            chunk_x -= 1;
+        }
+
+        let mut chunk_z = (world_z + if world_z < 0 { 1 } else { 0 }) / 16;
+        if world_z < 0 { 
+            chunk_z -= 1;
+        }
         let chunk = self.get_chunk(chunk_x, chunk_z);
         if chunk.is_none() || world_y < 0 {
             return None
         }
 
-        let local_x = (world_x % 16).abs() as usize;
-        let local_z = (world_z % 16).abs() as usize;
-        Some(chunk.unwrap().block_at(local_x, world_y as usize, local_z))
+        let local_x = ((chunk_x.abs() * 16 + world_x) % 16).abs() as usize;
+        let local_z = ((chunk_z.abs() * 16 + world_z) % 16).abs() as usize;
+
+        let result = Some(chunk.unwrap().block_at(local_x, world_y as usize, local_z));
+        result
     }
 
     pub fn set_block(&mut self, world_x: i32, world_y: i32, world_z: i32, block: BlockType) {
-        let chunk_x = world_x / 16;
-        let chunk_z = world_z / 16;
-        let chunk = self.get_chunk_mut(chunk_x, chunk_z).unwrap();
-        //     for x in 0..16 {
-        //         for z in 0..16 {
-        //             for y in 0..50 {
-        //                 chunk.set_block(x, y, z, BlockType::Dirt);
-        //             }
-        //         }
-        //     }
-        // }
+        let mut chunk_x = (world_x + if world_x < 0 { 1 } else { 0 }) / 16;
+        if world_x < 0 {
+            chunk_x -= 1;
+        }
 
-        // self.get_chunk_mut(chunk_x, chunk_z).unwrap().gen_mesh();
+        let mut chunk_z = (world_z + if world_z < 0 { 1 } else { 0 }) / 16;
+        if world_z < 0 { 
+            chunk_z -= 1;
+        }
+        let chunk = self.get_chunk_mut(chunk_x, chunk_z);
 
-        // for x in 0..16 {
-        //     for z in 0..16 {
-        //         for y in 0..5 {
-        //             println!("{} {} {} = {:?}", x, y, z, self.get_block(x as i32, y as i32, z as i32));
-        //         }
-        //     }
-        // }
+        let local_x = ((chunk_x.abs() * 16 + world_x) % 16).abs() as usize;
+        let local_z = ((chunk_z.abs() * 16 + world_z) % 16).abs() as usize;
 
-        let local_x = (world_x % 16).abs() as usize;
-        let local_z = (world_z % 16).abs() as usize;
-
-        println!("Updated {} {} {} to be type {:?}", local_x, world_y, local_z, block);
-        chunk.set_block(local_x, world_y as usize, local_z, block);
-        println!("{} {} {} = {:?}", local_x, world_y, local_z, self.get_block(world_x, world_y, world_z));
+        chunk.unwrap().set_block(local_x, world_y as usize, local_z, block);
     }
 
-    pub fn raymarch_block(&mut self, position: &Vector3<f32>, direction: &Vector3<f32>) -> Option<(i32, i32, i32)> {
+    pub fn raymarch_block(&mut self, position: &Vector3<f32>, direction: &Vector3<f32>) -> Option<((i32, i32, i32), Face)> {
         let mut check_position = *position;
+        let direction = *direction / 2.0;
         let mut range = 50;
-        let direction = direction * 0.1;
+
+        let mut result = Vec::new();
         loop {
             check_position = check_position + direction;
             let x = check_position.x.round() as i32;
             let y = check_position.y.round() as i32;
             let z = check_position.z.round() as i32;
+            result.push((x, y, z));
+
             let block = self.get_block(x, y, z);
             if let Some(block) = block {
                 if block != BlockType::Air {
-                    println!("Block at {} {} {} is {:?}", x, y, z, block);
-                    return Some((x, y, z))
+                    let vector = -direction;
+                    let abs_x = vector.x.abs();
+                    let abs_y = vector.y.abs();
+                    let abs_z = vector.z.abs();
+                    let face: Face;
+                    // get cube face from ray direction
+                    if abs_x > abs_y && abs_x > abs_z {
+                        // negated ray is on x-axis
+                        face = if vector.x > 0.0 {
+                            Face::Right
+                        } else {
+                            Face::Left
+                        }
+                    } else if abs_y > abs_z && abs_y > abs_x { 
+                        // negated ray is on y-axis
+                        face = if vector.y > 0.0 {
+                            Face::Top
+                        } else {
+                            Face::Bottom
+                        }
+                    } else {
+                        // negated ray is on z-axis
+                        face = if vector.z > 0.0 {
+                            Face::Back
+                        } else {
+                            Face::Front
+                        }
+                    }
+                    return Some(((x, y, z), face));
                 }
             }
 
             if range == 0 {
-                return None
+                return None;
             }
             range = range - 1;
         }

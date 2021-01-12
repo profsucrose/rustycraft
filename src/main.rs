@@ -4,8 +4,9 @@ use std::{ffi::c_void, mem, path::Path, ptr, sync::mpsc::Receiver, time::Instant
 use cgmath::{Matrix4, vec3};
 use glfw::{Action, Context, CursorMode, Key, MouseButton, PixelImage, WindowEvent};
 use gl::types::*;
-use models::{block_type::BlockType, camera::Camera, shader::Shader, text_renderer::TextRenderer, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer, world::World};
 use image::{RgbaImage, GenericImage};
+
+use crate::models::{core::{block_type::BlockType, face::Face, world::World}, opengl::{camera::Camera, shader::Shader, text_renderer::TextRenderer, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}};
 
 // settings
 const SCR_WIDTH: u32 = 1000;
@@ -108,11 +109,13 @@ unsafe fn start() {
 
     // set vertex attribute pointers
     // position
-    vbo.add_float_attribute(3, 9);
+    vbo.add_float_attribute(3, 10);
     for _ in 0..6 {
         // block indices attributes
-        vbo.add_float_attribute(1, 9);
+        vbo.add_float_attribute(1, 10);
     }
+    // faces to draw via bitwise
+    vbo.add_float_attribute(1, 10);
 
     // create world object
     let mut world = World::new(10);
@@ -142,6 +145,12 @@ unsafe fn start() {
     // target fps
     let target_fps = 60.0;
 
+    let mut selected_coords = None;
+
+    let mut force_recalculation = false;
+
+    let mut current_block_index = 0;
+
     // render loop
     while !window.should_close() {
         let deltatime = instant.elapsed().as_millis() as f32;
@@ -152,11 +161,14 @@ unsafe fn start() {
             &mut window, 
             &events, 
             &mut mouse_captured,
+            &selected_coords,
             &mut world,
             &mut camera, 
             &mut last_x, 
             &mut last_y, 
-            &mut first_mouse
+            &mut first_mouse,
+            &mut force_recalculation,
+            &mut current_block_index
         );
         camera.update_position(deltatime);
 
@@ -169,6 +181,19 @@ unsafe fn start() {
         text_renderer.render_text(format!("x: {:.2}", camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, vec3(1.0, 0.0, 0.0));
         text_renderer.render_text(format!("y: {:.2}", camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, vec3(1.0, 0.0, 0.0));
         text_renderer.render_text(format!("z: {:.2}", camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 0.0, 0.0));
+        let block = match current_block_index {
+            0 => BlockType::Dirt,
+            1 => BlockType::Grass,
+            2 => BlockType::Stone,
+            3 => BlockType::Log,
+            4 => BlockType::Leaves,
+            5 => BlockType::Orange,
+            6 => BlockType::DarkOrange,
+            7 => BlockType::Black,
+            _ => BlockType::Air
+        };
+        text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 110.0, 0.6, vec3(1.0, 0.0, 0.0));
+
 
         // draw crosshairs
         // crosshairs_shader.use_program();
@@ -197,27 +222,46 @@ unsafe fn start() {
         vao.bind();
         vbo.bind();
 
-        let meshes = world.get_world_mesh_from_perspective(camera.position.x as i32, camera.position.z as i32);
+        let meshes = world.get_world_mesh_from_perspective(camera.position.x as i32, camera.position.z as i32, force_recalculation);
+        force_recalculation = false;
         for mesh in meshes.iter() {
             vbo.set_data(&mesh, gl::DYNAMIC_DRAW);
-            gl::DrawArrays(gl::POINTS, 0, (mesh.len() / 9) as GLint);
+            gl::DrawArrays(gl::POINTS, 0, (mesh.len() / 10) as GLint);
         }
-
-        let result = world.raymarch_block(&camera.position, &camera.front);
-        if let Some((x, y, z)) = result {
-            let x = x as f32;
-            let y = y as f32; 
-            let z = z as f32;
-            let mut mesh = vec![x, y, z];
+   
+        selected_coords = world.raymarch_block(&camera.position, &camera.front);
+        if let Some(((x, y, z), face)) = selected_coords {
+            let mut mesh = Vec::new();
+            mesh.push(x as f32);
+            mesh.push(y as f32);
+            mesh.push(z as f32);
             for _ in 0..6 {
                 mesh.push(7.0);
-            }
-            println!("Rendering cube at {} {} {}", x, y, z);
-            shader.set_mat4("model", Matrix4::from_scale(1.001));
-
+            };
+            // let face = match i {
+            //     0 => Face::Front,
+            //     1 => Face::Right,
+            //     2 => Face::Back,
+            //     3 => Face::Bottom,
+            //     4 => Face::Left,
+            //     5 => Face::Top,
+            //     _ => panic!("Attempted to convert invalid index to face when setting vertex texture UV indices")
+            // }
+            let face_to_draw = match face {
+                Face::Front     => 0b10000000,
+                Face::Right     => 0b01000000,
+                Face::Back      => 0b00100000,
+                Face::Bottom    => 0b00010000,
+                Face::Left      => 0b00001000,
+                Face::Top       => 0b00000100,
+            };
+            mesh.push(face_to_draw as f32);
             vbo.set_data(&mesh, gl::DYNAMIC_DRAW);
+
+            shader.set_mat4("model", Matrix4::from_scale(1.01));
             gl::DrawArrays(gl::POINTS, 0, 1);
         }
+
         window.swap_buffers();
         glfw.poll_events();
 
@@ -226,7 +270,7 @@ unsafe fn start() {
     }
 }
 
-fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::WindowEvent)>, mouse_captured: &mut bool, world: &mut World, camera: &mut Camera, last_x: &mut f32, last_y: &mut f32, first_mouse: &mut bool) {
+fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::WindowEvent)>, mouse_captured: &mut bool, selected_coords: &Option<((i32, i32, i32), Face)>, world: &mut World, camera: &mut Camera, last_x: &mut f32, last_y: &mut f32, first_mouse: &mut bool, force_recalculation: &mut bool, current_block_index: &mut u32) {
     for (_, event) in glfw::flush_messages(events) {
         match event {
             WindowEvent::FramebufferSize(width, height) => {
@@ -264,14 +308,43 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                 println!("Saved screenshot");
             },
             WindowEvent::MouseButton(MouseButton::Button1, Action::Press, _) => {
-                // println!("Mouse button event");
-                let result = world.raymarch_block(&camera.position, &camera.front);
-                if let Some((x, y, z)) = result {
-                    world.set_block(x, y, z, BlockType::Log);
-                    world.recalculate_mesh_from_perspective((camera.position.x as i32) % 16, (camera.position.z as i32) % 16)
+                if let Some(((x, y, z), _)) = selected_coords {
+                    world.set_block(*x, *y, *z, BlockType::Air);
+                    *force_recalculation = true;
+                    //world.recalculate_mesh_from_perspective((camera.position.x as i32) % 16, (camera.position.z as i32) % 16);
                 }
-                println!("Raymarched block from pos: {:?}", result);
             },
+            WindowEvent::MouseButton(MouseButton::Button2, Action::Press, _) => {
+                if let Some(((x, y, z), face)) = selected_coords {
+                    let x = *x;
+                    let y = *y;
+                    let z = *z;
+                    let place_position = match face {
+                        Face::Top => (x, y + 1, z),
+                        Face::Bottom => (x, y - 1, z),
+                        Face::Right => (x + 1, y, z),
+                        Face::Left => (x - 1, y, z),
+                        Face::Front => (x, y, z - 1),
+                        Face::Back => (x, y, z + 1),
+                    };
+                    let block = match current_block_index {
+                        0 => BlockType::Dirt,
+                        1 => BlockType::Grass,
+                        2 => BlockType::Stone,
+                        3 => BlockType::Log,
+                        4 => BlockType::Leaves,
+                        5 => BlockType::Orange,
+                        6 => BlockType::DarkOrange,
+                        7 => BlockType::Black,
+                        _ => BlockType::Air
+                    };
+                    world.set_block(place_position.0, place_position.1, place_position.2, block);
+                    *force_recalculation = true;
+                    //world.recalculate_mesh_from_perspective((camera.position.x as i32) % 16, (camera.position.z as i32) % 16);
+                }
+            }, 
+            WindowEvent::Key(Key::Up, _, Action::Press, _) => *current_block_index += 1,
+            WindowEvent::Key(Key::Down, _, Action::Press, _) => if *current_block_index > 0 { *current_block_index -= 1 },
             WindowEvent::Key(Key::LeftShift, _, Action::Press, _) => camera.speed = 0.05,
             WindowEvent::Key(Key::LeftShift, _, Action::Release, _) => camera.speed = 0.008,
             WindowEvent::Key(Key::Escape, _, Action::Press, _) => window.set_should_close(true),

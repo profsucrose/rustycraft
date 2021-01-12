@@ -3,7 +3,7 @@ use cgmath::{Vector2, Vector3, ortho, vec2};
 use freetype::Library;
 use gl::types::*;
 
-use crate::models::shader::Shader;
+use super::shader::Shader;
 
 pub struct Character {
     pub texture_id: u32, // glyph texture ID
