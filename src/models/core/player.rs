@@ -27,7 +27,7 @@ impl Player {
         let x = position.x.round() as i32;
         let y = position.y.round() as i32;
         let z = position.z.round() as i32; 
-        if !world.air_at(x, y, z) {
+        if !world.air_at(x, y, z) || !world.air_at(x, y + 1, z) {
             self.camera.position = old_position;
         }
     }
@@ -58,7 +58,7 @@ impl Player {
 
     pub fn jump(&mut self) {
         if !self.is_jumping {
-            self.velocity_y = 0.2;
+            self.velocity_y = 0.05;
             self.is_jumping = true;
         }
     }

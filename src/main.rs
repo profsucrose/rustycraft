@@ -86,7 +86,7 @@ unsafe fn start() {
     vbo.add_float_attribute(1, 10);
 
     // create world object
-    let mut world = World::new(10);
+    let mut world = World::new(12);
     println!("Initialized new world");
 
     let texture_map = Texture::new(
@@ -168,7 +168,6 @@ unsafe fn start() {
             _ => BlockType::Air
         };
         text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 110.0, 0.6, vec3(1.0, 1.0, 1.0));
-
 
         // draw crosshairs
         // crosshairs_shader.use_program();
@@ -294,6 +293,7 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                     let x = *x;
                     let y = *y;
                     let z = *z;
+                    
                     let place_position = match face {
                         Face::Top => (x, y + 1, z),
                         Face::Bottom => (x, y - 1, z),
@@ -313,6 +313,13 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                         7 => BlockType::Black,
                         _ => BlockType::Air
                     };
+
+                    if place_position.0 == player.camera.position.x.round() as i32
+                        && (place_position.1 == player.camera.position.y.round() as i32
+                        || place_position.1 == player.camera.position.y.round() as i32 - 1)
+                        && place_position.2 == player.camera.position.z.round() as i32 {
+                            return;
+                        }
                     world.set_block(place_position.0, place_position.1, place_position.2, block);
                     *force_recalculation = true;
                     //world.recalculate_mesh_from_perspective((camera.position.x as i32) % 16, (camera.position.z as i32) % 16);

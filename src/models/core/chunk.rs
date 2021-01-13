@@ -30,17 +30,25 @@ impl Chunk {
                 let simplex_x = (x as i32 + x_offset) as f32;
                 let simplex_z = (z as i32 + z_offset) as f32;
                 let noise = gen_heightmap(simplex_x, simplex_z, simplex.clone());
-                let height = ((noise + 1.0) * amplitude) as usize;
-                for y in 0..height {
-                    let distance_to_top = height - y;
-                    let block = match distance_to_top {
-                        1 => BlockType::Grass,
-                        2 | 3 => BlockType::Dirt,
-                        _ => BlockType::Stone
-                    };
-                    blocks.set(x, y, z, block);
-                    blocks_in_mesh.push((x, y, z));
-                }
+                let height = (noise * amplitude) as usize;
+                if noise < 0.4 {
+                    // if height is low enough make flat water
+                    for y in 0..(0.4 * amplitude) as usize - 1 {
+                        blocks.set(x, y, z, BlockType::Water);
+                        blocks_in_mesh.push((x, y, z));
+                    }
+                } else {
+                    for y in 0..height {
+                        let distance_to_top = height - y;
+                        let block = match distance_to_top {
+                            1 => BlockType::Grass,
+                            2 | 3 => BlockType::Dirt,
+                            _ => BlockType::Stone
+                        };
+                        blocks.set(x, y, z, block);
+                        blocks_in_mesh.push((x, y, z));
+                    }
+                }                
             }
         } 
 
@@ -50,42 +58,43 @@ impl Chunk {
             let x = (rng.gen::<f32>() * 11.0) as usize + 3;
             let z = (rng.gen::<f32>() * 11.0) as usize + 3;
             let top = blocks.highest_in_column(x, z);
-            blocks.set(x, top, z, BlockType::Log);
-            blocks_in_mesh.push((x, top, z));
+            if blocks.get(x, top, z) != BlockType::Water {
+                blocks.set(x, top, z, BlockType::Log);
+                blocks_in_mesh.push((x, top, z));
 
-            blocks.set(x, top + 1, z, BlockType::Log);
-            blocks_in_mesh.push((x, top + 1, z));
+                blocks.set(x, top + 1, z, BlockType::Log);
+                blocks_in_mesh.push((x, top + 1, z));
 
-            blocks.set(x, top + 2, z, BlockType::Log);
-            blocks_in_mesh.push((x, top + 2, z));
+                blocks.set(x, top + 2, z, BlockType::Log);
+                blocks_in_mesh.push((x, top + 2, z));
 
-            blocks.set(x, top + 3, z, BlockType::Log);
-            blocks_in_mesh.push((x, top + 3, z));
+                blocks.set(x, top + 3, z, BlockType::Log);
+                blocks_in_mesh.push((x, top + 3, z));
 
-            blocks.set(x + 1, top + 3, z, BlockType::Leaves);
-            blocks_in_mesh.push((x + 1, top + 3, z));
-            
-            blocks.set(x - 1, top + 3, z, BlockType::Leaves);
-            blocks_in_mesh.push((x - 1, top + 3, z));
+                blocks.set(x + 1, top + 3, z, BlockType::Leaves);
+                blocks_in_mesh.push((x + 1, top + 3, z));
+                
+                blocks.set(x - 1, top + 3, z, BlockType::Leaves);
+                blocks_in_mesh.push((x - 1, top + 3, z));
 
-            blocks.set(x, top + 3, z + 1, BlockType::Leaves);
-            blocks_in_mesh.push((x, top + 3, z + 1));
+                blocks.set(x, top + 3, z + 1, BlockType::Leaves);
+                blocks_in_mesh.push((x, top + 3, z + 1));
 
-            blocks.set(x, top + 3, z - 1, BlockType::Leaves);
-            blocks_in_mesh.push((x, top + 3, z - 1));
+                blocks.set(x, top + 3, z - 1, BlockType::Leaves);
+                blocks_in_mesh.push((x, top + 3, z - 1));
 
-            blocks.set(x, top + 4, z, BlockType::Leaves);
-            blocks_in_mesh.push((x, top + 4, z));
+                blocks.set(x, top + 4, z, BlockType::Leaves);
+                blocks_in_mesh.push((x, top + 4, z));
+            }
         }
 
-        let mut chunk = Chunk { blocks, blocks_in_mesh, x: x_offset, z: z_offset, mesh: Rc::new(vec![]) };
-        chunk.gen_mesh();
-        chunk
+        Chunk { blocks, blocks_in_mesh, x: x_offset, z: z_offset, mesh: Rc::new(vec![]) }
     }
 
-    pub fn gen_mesh(&mut self) -> Rc<Vec<f32>> {
+    pub fn gen_mesh(&self, right_chunk: &Chunk, left_chunk: &Chunk, front_chunk: &Chunk, back_chunk: &Chunk) -> Rc<Vec<f32>> {
         let mut vertices = Vec::new();
         for (x, y, z) in self.blocks_in_mesh.iter() {
+            // let instant = std::time::Instant::now();
             let x = *x;
             let y = *y;
             let z = *z;
@@ -100,12 +109,12 @@ impl Chunk {
             let z = z as i32;
             let faces =
                 0
-                | if self.air_at(x, y, z - 1) { 0b10000000 } else { 0 }
-                | if self.air_at(x + 1, y, z) { 0b01000000 } else { 0 }
-                | if self.air_at(x, y, z + 1) { 0b00100000 } else { 0 }
-                | if self.air_at(x, y - 1, z) { 0b00010000 } else { 0 }
-                | if self.air_at(x - 1, y, z) { 0b00001000 } else { 0 }
-                | if self.air_at(x, y + 1, z) { 0b00000100 } else { 0 };
+                | if self.air_at_adj_chunks(x, y, z - 1, right_chunk, left_chunk, front_chunk, back_chunk) { 0b10000000 } else { 0 }
+                | if self.air_at_adj_chunks(x + 1, y, z, right_chunk, left_chunk, front_chunk, back_chunk) { 0b01000000 } else { 0 }
+                | if self.air_at_adj_chunks(x, y, z + 1, right_chunk, left_chunk, front_chunk, back_chunk) { 0b00100000 } else { 0 }
+                | if self.air_at_adj_chunks(x, y - 1, z, right_chunk, left_chunk, front_chunk, back_chunk) { 0b00010000 } else { 0 }
+                | if self.air_at_adj_chunks(x - 1, y, z, right_chunk, left_chunk, front_chunk, back_chunk) { 0b00001000 } else { 0 }
+                | if self.air_at_adj_chunks(x, y + 1, z, right_chunk, left_chunk, front_chunk, back_chunk) { 0b00000100 } else { 0 };
 
             if faces == 0 {
                 continue;
@@ -133,9 +142,11 @@ impl Chunk {
             }
 
             vertices.push(faces as f32);
+            // println!("Took {:?} to add a block", instant.elapsed());
         }
-        self.mesh = Rc::new(vertices);
-        self.mesh.clone()
+        //self.mesh = Rc::new(vertices);
+
+        Rc::new(vertices)
     }
 
     pub fn block_at(&self, x: usize, y: usize, z: usize) -> BlockType {
@@ -154,7 +165,7 @@ impl Chunk {
         } else {
             self.blocks_in_mesh.push((x, y, z));
         }
-        self.gen_mesh();
+        //self.gen_mesh();
     }
 
     pub fn air_at(&self, x: i32, y: i32, z: i32) -> bool {
@@ -171,6 +182,26 @@ impl Chunk {
         self.blocks.get(x as usize, y as usize, z as usize) == BlockType::Air
     }
 
+    pub fn air_at_adj_chunks(&self, x: i32, y: i32, z: i32, right_chunk: &Chunk, left_chunk: &Chunk, front_chunk: &Chunk, back_chunk: &Chunk) -> bool {
+        if y < 0 {
+            return false
+        }
+
+        // if outside own chunk fetch edge
+        // of respective adjacent chunk
+        if x == 16 {
+            return right_chunk.air_at(15, y, z);
+        } else if x == -1 {
+            return left_chunk.air_at(0, y, z);
+        } else if z == 16 {
+            return back_chunk.air_at(x, y, 0);
+        } else if z == -1 {
+            return front_chunk.air_at(x, y, 15);
+        }
+
+        self.blocks.get(x as usize, y as usize, z as usize) == BlockType::Air
+    }
+    
     pub fn highest_in_column(&self, x: usize, z: usize) -> usize {
         self.blocks.highest_in_column(x, z)
     }
@@ -181,10 +212,16 @@ impl Chunk {
 }
 
 fn gen_heightmap(x: f32, z: f32, simplex: Rc<OpenSimplex>) -> f32 {
+    // get distance from center
+    let nx = x / 20.0 - 0.5;
+    let nz = z / 20.0 - 0.5;
+    let d = (nx * nx + nz * nz).sqrt() / (0.5 as f32).sqrt(); 
+
     let height = 2.5 * sample_simplex(x / 35.0, z / 35.0, simplex.clone())
     + 0.5 * sample_simplex(x / 10.0, z / 10.0, simplex.clone())
     + 0.25 * sample_simplex(x / 4.0, z / 4.0, simplex.clone());
-    height.powf(1.3)
+    let height = height.powf(1.3);
+    (1.0 + height - d.powf(0.5)) / 2.0
 }
 
 fn sample_simplex(x: f32, z: f32, simplex: Rc<OpenSimplex>) -> f32 {

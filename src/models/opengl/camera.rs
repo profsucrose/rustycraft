@@ -54,12 +54,13 @@ impl Camera {
     pub fn update_position(&mut self, deltatime: f32) {
         let speed = self.speed * deltatime;
         let old_y = self.position.y;
+        let front_horiz = Vector3::new(self.front.x, 0.0, self.front.z).normalize();
         if self.moving_forward {
-            self.position += speed * self.front
+            self.position += speed * front_horiz
         } 
         
         if self.moving_backward {
-            self.position -= speed * self.front
+            self.position -= speed * front_horiz
         } 
     
         if self.moving_right {

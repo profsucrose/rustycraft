@@ -1,7 +1,8 @@
 use std::rc::Rc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use cgmath::{Vector3, InnerSpace};
-use noise::{OpenSimplex};
+use noise::{OpenSimplex, Seedable};
 
 use super::{block_type::BlockType, chunk::Chunk, coord_map::CoordMap, face::Face};
 
@@ -19,7 +20,9 @@ pub struct World {
 impl World {
     pub fn new(render_distance: u32) -> World {
         let chunks = CoordMap::new();
-        let simplex = Rc::new(OpenSimplex::new());
+        let simplex = OpenSimplex::new().set_seed(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u32);
+        println!("{}", simplex.seed());
+        let simplex = Rc::new(simplex);
         
         World { chunks, render_distance, simplex, player_chunk_x: 0, player_chunk_z: 0, mesh: vec![] }
     }
@@ -54,6 +57,7 @@ impl World {
 
     pub fn recalculate_mesh_from_perspective(&mut self, player_chunk_x: i32, player_chunk_z: i32) {
         let mut meshes = Vec::new();
+        let mut chunks_in_view = Vec::new();
         for x in 0..self.render_distance * 2 {
             let x = (x as i32) - (self.render_distance as i32) + player_chunk_x;
             for z in 0..self.render_distance * 2 {
@@ -62,9 +66,34 @@ impl World {
                     continue;
                 }
 
-                let chunk = self.get_or_insert_chunk(x, z);
-                meshes.push(chunk.mesh.clone());
+                self.get_or_insert_chunk(x, z);
+                self.get_or_insert_chunk(x + 1, z);
+                self.get_or_insert_chunk(x - 1, z);
+                self.get_or_insert_chunk(x, z + 1);
+                self.get_or_insert_chunk(x, z - 1);
+                chunks_in_view.push((x, z));
             }
+        }
+
+        for (x, z) in chunks_in_view.iter() {
+            let x = *x;
+            let z = *z;
+
+            let mesh;
+            let chunk = self.get_chunk(x, z).unwrap();
+            if chunk.mesh.len() != 0 {
+                mesh = chunk.mesh.clone();
+            } else {
+                let right_chunk = self.get_chunk(x + 1, z).unwrap();
+                let left_chunk = self.get_chunk(x - 1, z).unwrap();
+                let front_chunk = self.get_chunk(x, z - 1).unwrap();
+                let back_chunk = self.get_chunk(x, z + 1).unwrap();
+                mesh = chunk.gen_mesh(right_chunk, left_chunk, front_chunk, back_chunk);
+            }
+
+            let chunk = self.get_chunk_mut(x, z).unwrap();
+            chunk.mesh = mesh;
+            meshes.push(chunk.mesh.clone());
         }
 
         self.mesh = meshes;
@@ -140,8 +169,36 @@ impl World {
 
     pub fn set_block(&mut self, world_x: i32, world_y: i32, world_z: i32, block: BlockType) {
         let (chunk_x, chunk_z, local_x, local_z) = self.localize_coords_to_chunk(world_x, world_z);
-        let chunk = self.get_chunk_mut(chunk_x, chunk_z);
-        chunk.unwrap().set_block(local_x, world_y as usize, local_z, block);
+
+        // set blok
+        {
+            let chunk = self.get_chunk_mut(chunk_x, chunk_z).unwrap();
+            chunk.set_block(local_x, world_y as usize, local_z, block);
+        }
+
+        // update chunk mesh
+        self.update_chunk_mesh(chunk_x, chunk_z);
+        if local_x == 0 {
+            self.update_chunk_mesh(chunk_x - 1, chunk_z)
+        } else if local_x == 15 {
+            self.update_chunk_mesh(chunk_x + 1, chunk_z)
+        } else if local_z == 0 {
+            self.update_chunk_mesh(chunk_x, chunk_z - 1)
+        } else if local_z == 15 {
+            self.update_chunk_mesh(chunk_x, chunk_z + 1)
+        }
+    }
+
+    fn update_chunk_mesh(&mut self, chunk_x: i32, chunk_z: i32) {
+        // assume adjacent chunks exist
+        let right_chunk = self.get_chunk(chunk_x + 1, chunk_z).unwrap();
+        let left_chunk = self.get_chunk(chunk_x - 1, chunk_z).unwrap();
+        let front_chunk = self.get_chunk(chunk_x, chunk_z - 1).unwrap();
+        let back_chunk = self.get_chunk(chunk_x, chunk_z + 1).unwrap();
+        let chunk = self.get_chunk(chunk_x, chunk_z).unwrap();
+        let mesh = chunk.gen_mesh(right_chunk, left_chunk, front_chunk, back_chunk); 
+
+        self.get_chunk_mut(chunk_x, chunk_z).unwrap().mesh = mesh;
     }
 
     fn localize_coords_to_chunk(&self, world_x: i32, world_z: i32) -> (i32, i32, usize, usize) {
