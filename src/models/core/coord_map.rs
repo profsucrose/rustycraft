@@ -12,24 +12,30 @@ impl<T> CoordMap<T> {
     }
 
     pub fn get(&self, x: i32, z: i32) -> Option<&T> {
-        if !self.map.contains_key(&x) {
-            return None 
+        let item = self.map.get(&x);
+        if item.is_none() {
+            return None
         }
-        self.map[&x].get(&z)
+
+        item.unwrap().get(&z)
     }
 
     pub fn get_mut(&mut self, x: i32, z: i32) -> Option<&mut T> {
-        if !self.map.contains_key(&x) {
-            return None 
+        let item = self.map.get_mut(&x);
+        if item.is_none() {
+            return None
         }
-        self.map.get_mut(&x).unwrap().get_mut(&z)
+
+        item.unwrap().get_mut(&z)
     }
 
     pub fn contains(&self, x: i32, z: i32) -> bool {
-        if !self.map.contains_key(&x) {
+        let item = self.map.get(&x);
+        if item.is_none() {
             return false
         }
-        self.map[&x].contains_key(&z)
+
+        item.unwrap().contains_key(&z)
     }
 
     pub fn insert(&mut self, x: i32, z: i32, value: T) {

@@ -5,6 +5,7 @@ use cgmath::{Matrix4, vec3};
 use glfw::{Action, Context, CursorMode, Key, MouseButton, PixelImage, WindowEvent};
 use gl::types::*;
 use image::{RgbaImage, GenericImage};
+use models::core::player::Player;
 
 use crate::models::{core::{block_type::BlockType, face::Face, world::World}, opengl::{camera::Camera, shader::Shader, text_renderer::TextRenderer, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}};
 
@@ -66,39 +67,6 @@ unsafe fn start() {
 
     let shader = Shader::new_with_geom("assets/shaders/vertex.vert", "assets/shaders/fragment.frag", "assets/shaders/geometry.geom");
 
-    // crosshairs
-    // let crosshairs_texture = Texture::new("assets/textures/crosshairs.png", gl::TEXTURE0, true);
-    // let crosshairs_vao = VertexArray::new();
-    // crosshairs_vao.bind();
-
-    // let crosshairs_shader = Shader::new("assets/shaders/crosshairs.vert", "assets/shaders/crosshairs.frag");
-    // let mut crosshairs_vbo = VertexBuffer::new();
-    // crosshairs_vbo.bind_to_array_buffer();
-    
-    // position
-    // crosshairs_vbo.add_float_attribute(2, 4);
-
-    // texcoords
-    // crosshairs_vbo.add_float_attribute(2, 4);
-
-    // let crosshairs_vertices: Vec<f32> = vec![
-    //      0.01,  0.01, 1.0, 1.0, // top right
-    //      0.01, -0.01, 1.0, 0.0, // bottom right
-    //     -0.01,  0.01, 0.0, 1.0, // top left
-    //     -0.01, -0.01, 0.0, 0.0, // bottom left
-    // ];
-
-    // let middle_x = (SCR_WIDTH / 2) as f32;
-    // let middle_y = (SCR_HEIGHT / 2) as f32;
-
-    // let crosshairs_vertices: Vec<f32> = vec![
-    //       middle_x + 15.0,    middle_y + 15.0, 1.0, 1.0, // top right
-    //       middle_x + 15.0,    middle_y, 1.0, 0.0, // bottom right
-    //       middle_x,    15.0, 0.0, middle_y + 15.0, // top left
-    //       middle_x,    0.0, 0.0, middle_y // bottom left
-    // ];
-    // crosshairs_vbo.set_data(&crosshairs_vertices, gl::STATIC_DRAW);
-    
     // create vertex array
     let vao = VertexArray::new(); 
     vao.bind();
@@ -127,7 +95,9 @@ unsafe fn start() {
         false
     );
 
-    let mut camera = Camera::new(SCR_WIDTH, SCR_HEIGHT, 0.008);
+    let mut player = Player::new(SCR_WIDTH, SCR_HEIGHT);
+    world.recalculate_mesh_from_perspective(0, 0);
+    player.camera.position.y = world.highest_in_column(0, 0).unwrap() as f32 + 2.0;
 
     let mut instant = Instant::now();
 
@@ -163,24 +133,29 @@ unsafe fn start() {
             &mut mouse_captured,
             &selected_coords,
             &mut world,
-            &mut camera, 
+            &mut player, 
             &mut last_x, 
             &mut last_y, 
             &mut first_mouse,
             &mut force_recalculation,
             &mut current_block_index
         );
-        camera.update_position(deltatime);
+
+        player.update_position(&world, deltatime);
+
+        // update player altitude
+        player.update_alt(&world);
+
 
         // clear buffers
         gl::ClearColor(29.0 / 255.0, 104.0 / 255.0, 224.0 / 255.0, 1.0);
         gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); 
 
         // draw tex
-        text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 0.0, 0.0));
-        text_renderer.render_text(format!("x: {:.2}", camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, vec3(1.0, 0.0, 0.0));
-        text_renderer.render_text(format!("y: {:.2}", camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, vec3(1.0, 0.0, 0.0));
-        text_renderer.render_text(format!("z: {:.2}", camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 0.0, 0.0));
+        text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 1.0, 1.0));
+        text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, vec3(1.0, 1.0, 1.0));
+        text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, vec3(1.0, 1.0, 1.0));
+        text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 1.0, 1.0));
         let block = match current_block_index {
             0 => BlockType::Dirt,
             1 => BlockType::Grass,
@@ -192,7 +167,7 @@ unsafe fn start() {
             7 => BlockType::Black,
             _ => BlockType::Air
         };
-        text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 110.0, 0.6, vec3(1.0, 0.0, 0.0));
+        text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 110.0, 0.6, vec3(1.0, 1.0, 1.0));
 
 
         // draw crosshairs
@@ -210,8 +185,8 @@ unsafe fn start() {
         // shader uniforms
         shader.use_program();
         // transforms
-        shader.set_mat4("view", camera.get_view());
-        shader.set_mat4("projection", camera.get_projection());
+        shader.set_mat4("view", player.camera.get_view());
+        shader.set_mat4("projection", player.camera.get_projection());
         shader.set_mat4("model", Matrix4::<f32>::from_scale(1.0));
 
         // bind texture
@@ -222,15 +197,15 @@ unsafe fn start() {
         vao.bind();
         vbo.bind();
 
-        let meshes = world.get_world_mesh_from_perspective(camera.position.x as i32, camera.position.z as i32, force_recalculation);
+        let meshes = world.get_world_mesh_from_perspective(player.camera.position.x as i32, player.camera.position.z as i32, force_recalculation);
         force_recalculation = false;
         for mesh in meshes.iter() {
             vbo.set_data(&mesh, gl::DYNAMIC_DRAW);
             gl::DrawArrays(gl::POINTS, 0, (mesh.len() / 10) as GLint);
         }
    
-        selected_coords = world.raymarch_block(&camera.position, &camera.front);
-        if let Some(((x, y, z), face)) = selected_coords {
+        selected_coords = world.raymarch_block(&player.camera.position, &player.camera.front);
+        if let Some(((x, y, z), Some(face))) = selected_coords {
             let mut mesh = Vec::new();
             mesh.push(x as f32);
             mesh.push(y as f32);
@@ -270,14 +245,14 @@ unsafe fn start() {
     }
 }
 
-fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::WindowEvent)>, mouse_captured: &mut bool, selected_coords: &Option<((i32, i32, i32), Face)>, world: &mut World, camera: &mut Camera, last_x: &mut f32, last_y: &mut f32, first_mouse: &mut bool, force_recalculation: &mut bool, current_block_index: &mut u32) {
+fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::WindowEvent)>, mouse_captured: &mut bool, selected_coords: &Option<((i32, i32, i32), Option<Face>)>, world: &mut World, player: &mut Player, last_x: &mut f32, last_y: &mut f32, first_mouse: &mut bool, force_recalculation: &mut bool, current_block_index: &mut u32) {
     for (_, event) in glfw::flush_messages(events) {
         match event {
             WindowEvent::FramebufferSize(width, height) => {
                 unsafe { gl::Viewport(0, 0, width, height) }
             },
             WindowEvent::Scroll(_, y_offset) => {
-                camera.scroll_callback(y_offset as f32);
+                player.camera.scroll_callback(y_offset as f32);
             },
             WindowEvent::CursorPos(xpos, ypos) => {
                 let (x_pos, y_pos) = (xpos as f32, ypos as f32);
@@ -294,7 +269,7 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                     return;
                 }
 
-                camera.mouse_callback(x_offset, y_offset);
+                player.camera.mouse_callback(x_offset, y_offset);
             },
             WindowEvent::Key(Key::F2, _, Action::Press, _) => {
                 let width = SCR_WIDTH;
@@ -315,7 +290,7 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                 }
             },
             WindowEvent::MouseButton(MouseButton::Button2, Action::Press, _) => {
-                if let Some(((x, y, z), face)) = selected_coords {
+                if let Some(((x, y, z), Some(face))) = selected_coords {
                     let x = *x;
                     let y = *y;
                     let z = *z;
@@ -343,10 +318,11 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                     //world.recalculate_mesh_from_perspective((camera.position.x as i32) % 16, (camera.position.z as i32) % 16);
                 }
             }, 
+            WindowEvent::Key(Key::Space, _, Action::Press, _) => player.jump(),
             WindowEvent::Key(Key::Up, _, Action::Press, _) => *current_block_index += 1,
             WindowEvent::Key(Key::Down, _, Action::Press, _) => if *current_block_index > 0 { *current_block_index -= 1 },
-            WindowEvent::Key(Key::LeftShift, _, Action::Press, _) => camera.speed = 0.05,
-            WindowEvent::Key(Key::LeftShift, _, Action::Release, _) => camera.speed = 0.008,
+            WindowEvent::Key(Key::LeftShift, _, Action::Press, _) => player.camera.speed = 0.05,
+            WindowEvent::Key(Key::LeftShift, _, Action::Release, _) => player.camera.speed = 0.008,
             WindowEvent::Key(Key::Escape, _, Action::Press, _) => window.set_should_close(true),
             WindowEvent::Key(Key::LeftSuper, _, Action::Press, _) => {
                 println!("Toggling window focus");
@@ -357,7 +333,7 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                 });
             },
             WindowEvent::Key(key, _, action, _) => {
-                camera.process_keyboard(key, action);
+                player.camera.process_keyboard(key, action);
             },
             _ => ()
         }

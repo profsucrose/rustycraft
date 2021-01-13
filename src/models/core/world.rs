@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use cgmath::Vector3;
+use cgmath::{Vector3, InnerSpace};
 use noise::{OpenSimplex};
 
 use super::{block_type::BlockType, chunk::Chunk, coord_map::CoordMap, face::Face};
@@ -89,45 +89,62 @@ impl World {
     }
 
     pub fn get_chunk(&self, chunk_x: i32, chunk_z: i32) -> Option<&Chunk> {
-        match self.chunks.contains(chunk_x, chunk_z) {
-            true => self.chunks.get(chunk_x, chunk_z),
-            false => None
-        }
+        self.chunks.get(chunk_x, chunk_z)
     }
 
-    pub fn air_at(&self, x: i32, y: i32, z: i32) -> bool {
-        let chunk_x = x / 16;
-        let chunk_z = z / 16;
-        let chunk = self.get_chunk(chunk_x, chunk_z);
-        match chunk {
-            Some(chunk) => chunk.air_at(x % 16, y, z % 16),
-            None => false,
+    pub fn air_at(&self, world_x: i32, world_y: i32, world_z: i32) -> bool {
+        if world_y < 0 {
+            return false;
         }
+
+        let (chunk_x, chunk_z, local_x, local_z) = self.localize_coords_to_chunk(world_x, world_z);
+        //let instant = std::time::Instant::now();
+        let chunk = self.get_chunk(chunk_x, chunk_z);
+        //println!("Took {:?} to fetch chunk", instant.elapsed());
+        match chunk {
+            Some(chunk) => chunk.block_at(local_x, world_y as usize, local_z) == BlockType::Air, 
+            None => true
+        } 
     }
 
     pub fn get_block(&self, world_x: i32, world_y: i32, world_z: i32) -> Option<BlockType> {
-        let mut chunk_x = (world_x + if world_x < 0 { 1 } else { 0 }) / 16;
-        if world_x < 0 {
-            chunk_x -= 1;
-        }
-
-        let mut chunk_z = (world_z + if world_z < 0 { 1 } else { 0 }) / 16;
-        if world_z < 0 { 
-            chunk_z -= 1;
-        }
+        let (chunk_x, chunk_z, local_x, local_z) = self.localize_coords_to_chunk(world_x, world_z);
         let chunk = self.get_chunk(chunk_x, chunk_z);
         if chunk.is_none() || world_y < 0 {
             return None
         }
 
-        let local_x = ((chunk_x.abs() * 16 + world_x) % 16).abs() as usize;
-        let local_z = ((chunk_z.abs() * 16 + world_z) % 16).abs() as usize;
-
         let result = Some(chunk.unwrap().block_at(local_x, world_y as usize, local_z));
         result
     }
 
+    pub fn highest_in_column(&self, world_x: i32, world_z: i32) -> Option<usize> {
+        let (chunk_x, chunk_z, local_x, local_z) = self.localize_coords_to_chunk(world_x, world_z);
+        let chunk = self.get_chunk(chunk_x, chunk_z);
+        if chunk.is_none() {
+            return None
+        }
+
+        Some(chunk.unwrap().highest_in_column(local_x, local_z))
+    }
+
+    pub fn highest_in_column_from_y(&self, world_x: i32, world_y: i32, world_z: i32) -> Option<usize> {
+        let (chunk_x, chunk_z, local_x, local_z) = self.localize_coords_to_chunk(world_x, world_z);
+        let chunk = self.get_chunk(chunk_x, chunk_z);
+        if chunk.is_none() {
+            return None
+        }
+
+        Some(chunk.unwrap().highest_in_column_from_y(local_x, world_y as usize, local_z)) 
+    }
+
     pub fn set_block(&mut self, world_x: i32, world_y: i32, world_z: i32, block: BlockType) {
+        let (chunk_x, chunk_z, local_x, local_z) = self.localize_coords_to_chunk(world_x, world_z);
+        let chunk = self.get_chunk_mut(chunk_x, chunk_z);
+        chunk.unwrap().set_block(local_x, world_y as usize, local_z, block);
+    }
+
+    fn localize_coords_to_chunk(&self, world_x: i32, world_z: i32) -> (i32, i32, usize, usize) {
         let mut chunk_x = (world_x + if world_x < 0 { 1 } else { 0 }) / 16;
         if world_x < 0 {
             chunk_x -= 1;
@@ -137,22 +154,20 @@ impl World {
         if world_z < 0 { 
             chunk_z -= 1;
         }
-        let chunk = self.get_chunk_mut(chunk_x, chunk_z);
 
         let local_x = ((chunk_x.abs() * 16 + world_x) % 16).abs() as usize;
         let local_z = ((chunk_z.abs() * 16 + world_z) % 16).abs() as usize;
-
-        chunk.unwrap().set_block(local_x, world_y as usize, local_z, block);
+        (chunk_x, chunk_z, local_x, local_z)
     }
 
-    pub fn raymarch_block(&mut self, position: &Vector3<f32>, direction: &Vector3<f32>) -> Option<((i32, i32, i32), Face)> {
+    pub fn raymarch_block(&mut self, position: &Vector3<f32>, direction: &Vector3<f32>) -> Option<((i32, i32, i32), Option<Face>)> {
         let mut check_position = *position;
-        let direction = *direction / 2.0;
-        let mut range = 50;
+        let dir: Vector3<f32> = *direction / 10.0;
+        let mut range = 250;
 
         let mut result = Vec::new();
         loop {
-            check_position = check_position + direction;
+            check_position = check_position + dir;
             let x = check_position.x.round() as i32;
             let y = check_position.y.round() as i32;
             let z = check_position.z.round() as i32;
@@ -161,34 +176,51 @@ impl World {
             let block = self.get_block(x, y, z);
             if let Some(block) = block {
                 if block != BlockType::Air {
-                    let vector = -direction;
+                    let vector = (*position - (check_position - dir)).normalize();
                     let abs_x = vector.x.abs();
                     let abs_y = vector.y.abs();
                     let abs_z = vector.z.abs();
-                    let face: Face;
+                    let mut face = None;
+
+                    let mut face_is_x = false;
                     // get cube face from ray direction
-                    if abs_x > abs_y && abs_x > abs_z {
-                        // negated ray is on x-axis
+                    // negated ray is on x-axis
+                    let sign = signum(vector.x);
+                    if self.air_at(x + sign, y, z) {
                         face = if vector.x > 0.0 {
-                            Face::Right
+                            Some(Face::Right)
                         } else {
-                            Face::Left
-                        }
-                    } else if abs_y > abs_z && abs_y > abs_x { 
+                            Some(Face::Left)
+                        };
+                        face_is_x = true;
+                    } 
+                    
+                    if face.is_none() || abs_y > abs_x { 
                         // negated ray is on y-axis
-                        face = if vector.y > 0.0 {
-                            Face::Top
-                        } else {
-                            Face::Bottom
-                        }
-                    } else {
+                        let sign = signum(vector.y);
+                        if self.air_at(x, y + sign, z) {
+                            face = if vector.y > 0.0 {
+                                Some(Face::Top)
+                            } else {
+                                Some(Face::Bottom)
+                            };
+                            face_is_x = false;
+                        }                        
+                    } 
+                        
+                    let sign = signum(vector.z);
+                    if face.is_none() || if face_is_x { abs_z > abs_x } else { abs_z > abs_y } {
                         // negated ray is on z-axis
-                        face = if vector.z > 0.0 {
-                            Face::Back
-                        } else {
-                            Face::Front
+                        //let sign = signum(vector.z);
+                        if self.air_at(x, y, z + sign) {
+                            face = if vector.z > 0.0 {
+                                Some(Face::Back)
+                            } else {
+                                Some(Face::Front)
+                            }
                         }
                     }
+
                     return Some(((x, y, z), face));
                 }
             }
@@ -198,5 +230,13 @@ impl World {
             }
             range = range - 1;
         }
+    }
+}
+
+fn signum(n: f32) -> i32 {
+    if n > 0.0 {
+        1
+    } else {
+        -1
     }
 }

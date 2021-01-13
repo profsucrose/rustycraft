@@ -53,6 +53,7 @@ impl Camera {
 
     pub fn update_position(&mut self, deltatime: f32) {
         let speed = self.speed * deltatime;
+        let old_y = self.position.y;
         if self.moving_forward {
             self.position += speed * self.front
         } 
@@ -68,6 +69,8 @@ impl Camera {
         if self.moving_left {
             self.position -= speed * self.front.cross(self.up).normalize()
         }
+
+        self.position.y = old_y;
     }
 
     pub fn mouse_callback(&mut self, x_offset: f32, y_offset: f32) {

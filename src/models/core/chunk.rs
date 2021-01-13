@@ -83,7 +83,7 @@ impl Chunk {
         chunk
     }
 
-    fn gen_mesh(&mut self) -> Rc<Vec<f32>> {
+    pub fn gen_mesh(&mut self) -> Rc<Vec<f32>> {
         let mut vertices = Vec::new();
         for (x, y, z) in self.blocks_in_mesh.iter() {
             let x = *x;
@@ -95,9 +95,26 @@ impl Chunk {
                 continue;
             }
 
-            let world_x = ((x as i32) + self.x) as f32;
+            let x = x as i32;
+            let y = y as i32;
+            let z = z as i32;
+            let faces =
+                0
+                | if self.air_at(x, y, z - 1) { 0b10000000 } else { 0 }
+                | if self.air_at(x + 1, y, z) { 0b01000000 } else { 0 }
+                | if self.air_at(x, y, z + 1) { 0b00100000 } else { 0 }
+                | if self.air_at(x, y - 1, z) { 0b00010000 } else { 0 }
+                | if self.air_at(x - 1, y, z) { 0b00001000 } else { 0 }
+                | if self.air_at(x, y + 1, z) { 0b00000100 } else { 0 };
+
+            if faces == 0 {
+                continue;
+            }
+
+            let world_x = (x + self.x) as f32;
             let world_y = y as f32;
-            let world_z = ((z as i32) + self.z) as f32;
+            let world_z = (z + self.z) as f32;
+            
             vertices.push(world_x);
             vertices.push(world_y);
             vertices.push(world_z);
@@ -115,20 +132,8 @@ impl Chunk {
                 vertices.push(block_to_uv(block, face));
             }
 
-            let x = x as i32;
-            let y = y as i32;
-            let z = z as i32;
-            let faces =
-                0
-                | if self.air_at(x, y, z - 1) { 0b10000000 } else { 0 }
-                | if self.air_at(x + 1, y, z) { 0b01000000 } else { 0 }
-                | if self.air_at(x, y, z + 1) { 0b00100000 } else { 0 }
-                | if self.air_at(x, y - 1, z) { 0b00010000 } else { 0 }
-                | if self.air_at(x - 1, y, z) { 0b00001000 } else { 0 }
-                | if self.air_at(x, y + 1, z) { 0b00000100 } else { 0 };
             vertices.push(faces as f32);
         }
-
         self.mesh = Rc::new(vertices);
         self.mesh.clone()
     }
@@ -164,6 +169,14 @@ impl Chunk {
         }
 
         self.blocks.get(x as usize, y as usize, z as usize) == BlockType::Air
+    }
+
+    pub fn highest_in_column(&self, x: usize, z: usize) -> usize {
+        self.blocks.highest_in_column(x, z)
+    }
+
+    pub fn highest_in_column_from_y(&self, x: usize, y: usize, z: usize) -> usize {
+        self.blocks.highest_in_column_from_y(x, y, z)
     }
 }
 
