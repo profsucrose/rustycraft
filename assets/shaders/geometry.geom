@@ -93,10 +93,10 @@ void build_cube() {
         }
 
         int indices_index = i * 4;
-        emit_vertex(cubeVerts[cubeIndices[indices_index]],     cubeUVs[indices_index],     i); // bottom-left
-        emit_vertex(cubeVerts[cubeIndices[indices_index + 1]], cubeUVs[indices_index + 1], i); // bottom-left
-        emit_vertex(cubeVerts[cubeIndices[indices_index + 2]], cubeUVs[indices_index + 2], i); // bottom-left
-        emit_vertex(cubeVerts[cubeIndices[indices_index + 3]], cubeUVs[indices_index + 3], i); // bottom-left
+        emit_vertex(cubeVerts[cubeIndices[indices_index]],     cubeUVs[indices_index],     i); 
+        emit_vertex(cubeVerts[cubeIndices[indices_index + 1]], cubeUVs[indices_index + 1], i); 
+        emit_vertex(cubeVerts[cubeIndices[indices_index + 2]], cubeUVs[indices_index + 2], i); 
+        emit_vertex(cubeVerts[cubeIndices[indices_index + 3]], cubeUVs[indices_index + 3], i); 
 
         EndPrimitive();
     }

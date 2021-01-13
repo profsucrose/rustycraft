@@ -6,10 +6,10 @@ use gl::types::*;
 use super::shader::Shader;
 
 pub struct Character {
-    pub texture_id: u32, // glyph texture ID
-    pub size: Vector2<i32>, // size of glyph
-    pub bearing: Vector2<i32>, // offset from baseline to left/top of glyph
-    pub advance: i64 // offset to advance to next glyph
+    texture_id: u32, // glyph texture ID
+    size: Vector2<i32>, // size of glyph
+    bearing: Vector2<i32>, // offset from baseline to left/top of glyph
+    advance: i64 // offset to advance to next glyph
 }
 
 pub struct TextRenderer {
@@ -131,7 +131,7 @@ impl TextRenderer {
                 // hacky solution to properly adjust '-' and '^' respectively
                 45 => y + (ch.bearing.y as f32 / 2.0),
                 94 => y + ch.bearing.y as f32 / 4.0,
-                _ => y // + (ch.bearing.y as f32) * scale;
+                _ => y
             };
     
             let w = (ch.size.x as f32) * scale;

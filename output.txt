@@ -1,3 +1,0 @@
-2000 1200
-Initialized new world
-1 7 0

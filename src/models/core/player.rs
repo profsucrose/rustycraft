@@ -22,7 +22,8 @@ impl Player {
     pub fn update_position(&mut self, world: &World, deltatime: f32) {
         let old_position = self.camera.position.clone();
         self.camera.update_position(deltatime); 
-        let position = self.camera.position - Vector3::<f32>::new(0.0, 1.0, 0.0) + self.camera.front / 4.0;
+        let sign = if self.camera.moving_backward { -1.0 } else { 1.0 };
+        let position = self.camera.position - Vector3::<f32>::new(0.0, 1.0, 0.0) + sign * self.camera.front / 4.0;
         let x = position.x.round() as i32;
         let y = position.y.round() as i32;
         let z = position.z.round() as i32; 
@@ -33,10 +34,18 @@ impl Player {
 
     pub fn update_alt(&mut self, world: &World) {
         let x = self.camera.position.x.round() as i32;
-        let y = self.camera.position.y.round() as i32;
+        let y = (self.camera.position.y + 0.04).round() as i32;
         let z = self.camera.position.z.round() as i32;
         let ground_y = world.highest_in_column_from_y(x, y, z).unwrap() + 2;
-        self.camera.position.y += self.velocity_y;
+
+
+        let test_y = self.camera.position.y + 0.1 + self.velocity_y as f32;
+        if world.air_at(x, test_y.round() as i32, z) {
+            self.camera.position.y = test_y as f32;
+        } else {
+            self.velocity_y = TERMINAL_VEL;
+        }
+
         if self.camera.position.y < (ground_y as f32) - 0.001 {
             self.is_jumping = false;
             self.camera.position.y = ground_y as f32;

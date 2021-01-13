@@ -1,5 +1,6 @@
 use gl::types::*;
 use std::ffi::c_void;
+
 pub struct VertexBuffer {
     vbo: GLuint,
     attribute_index: u32,

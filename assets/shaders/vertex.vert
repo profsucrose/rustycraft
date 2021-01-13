@@ -7,11 +7,6 @@ layout (location = 4) in float aBottomUV;
 layout (location = 5) in float aLeftUV;
 layout (location = 6) in float aTopUV;
 layout (location = 7) in float aFacesToDraw;
-// layout (location = 1) in vec2 aTexCoord; 
-// layout (location = 2) in float aBlockIndex; 
-  
-// out vec2 TexCoord;
-// out vec3 position;
 
 out VS_OUT {
     float blockIndex;

@@ -2,8 +2,6 @@
 out vec4 FragColor;  
 
 in vec2 TexCoord;
-// in vec3 position;
-// in float blockIndex;
 
 uniform sampler2D texture_map;
 
