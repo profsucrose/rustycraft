@@ -40,11 +40,17 @@ impl Chunk {
                 } else {
                     for y in 0..height {
                         let distance_to_top = height - y;
-                        let block = match distance_to_top {
-                            1 => BlockType::Grass,
-                            2 | 3 => BlockType::Dirt,
-                            _ => BlockType::Stone
-                        };
+                        let block =
+                            if noise < 0.7 {
+                                BlockType::Sand
+                            } else {
+                                match distance_to_top {
+                                    1 => BlockType::Grass,
+                                    2 | 3 => BlockType::Dirt,
+                                    _ => BlockType::Stone
+                                }
+                            };
+                        
                         blocks.set(x, y, z, block);
                         blocks_in_mesh.push((x, y, z));
                     }
@@ -54,7 +60,7 @@ impl Chunk {
 
         // tree generation logic (hacked together, refactor later)
         let mut rng = rand::thread_rng();
-        if rng.gen::<f32>() < 0.5 {
+        if rng.gen::<f32>() < 0.9 {
             let x = (rng.gen::<f32>() * 11.0) as usize + 3;
             let z = (rng.gen::<f32>() * 11.0) as usize + 3;
             let top = blocks.highest_in_column(x, z);
@@ -169,15 +175,15 @@ impl Chunk {
     }
 
     pub fn air_at(&self, x: i32, y: i32, z: i32) -> bool {
-        if y < 2 {
+        if y < 0 {
             return false
         }
 
-        if x < 0 || x >= CHUNK_SIZE as i32
-            || y >= CHUNK_HEIGHT as i32
-            || z < 0 || z >= CHUNK_SIZE as i32 {
-            return true
-        }
+        // if x < 0 || x >= CHUNK_SIZE as i32
+        //     || y >= CHUNK_HEIGHT as i32
+        //     || z < 0 || z >= CHUNK_SIZE as i32 {
+        //     return true
+        // }
 
         self.blocks.get(x as usize, y as usize, z as usize) == BlockType::Air
     }
@@ -190,13 +196,13 @@ impl Chunk {
         // if outside own chunk fetch edge
         // of respective adjacent chunk
         if x == 16 {
-            return right_chunk.air_at(15, y, z);
+            return right_chunk.air_at(0, y, z);
         } else if x == -1 {
-            return left_chunk.air_at(0, y, z);
+            return left_chunk.air_at(15, y, z);
         } else if z == 16 {
-            return back_chunk.air_at(x, y, 0);
+            return front_chunk.air_at(x, y, 0);
         } else if z == -1 {
-            return front_chunk.air_at(x, y, 15);
+            return back_chunk.air_at(x, y, 15);
         }
 
         self.blocks.get(x as usize, y as usize, z as usize) == BlockType::Air
@@ -213,14 +219,14 @@ impl Chunk {
 
 fn gen_heightmap(x: f32, z: f32, simplex: Rc<OpenSimplex>) -> f32 {
     // get distance from center
-    let nx = x / 20.0 - 0.5;
-    let nz = z / 20.0 - 0.5;
+    let nx = x / 4.0 - 0.5;
+    let nz = z / 4.0 - 0.5;
     let d = (nx * nx + nz * nz).sqrt() / (0.5 as f32).sqrt(); 
 
-    let height = 2.5 * sample_simplex(x / 35.0, z / 35.0, simplex.clone())
-    + 0.5 * sample_simplex(x / 10.0, z / 10.0, simplex.clone())
+    let height = 5.0 * sample_simplex(x / 35.0, z / 35.0, simplex.clone())
+    + 2.0 * sample_simplex(x / 10.0, z / 10.0, simplex.clone())
     + 0.25 * sample_simplex(x / 4.0, z / 4.0, simplex.clone());
-    let height = height.powf(1.3);
+    let height = height.powf(1.2);
     (1.0 + height - d.powf(0.5)) / 2.0
 }
 

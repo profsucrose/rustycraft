@@ -21,7 +21,6 @@ impl World {
     pub fn new(render_distance: u32) -> World {
         let chunks = CoordMap::new();
         let simplex = OpenSimplex::new().set_seed(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u32);
-        println!("{}", simplex.seed());
         let simplex = Rc::new(simplex);
         
         World { chunks, render_distance, simplex, player_chunk_x: 0, player_chunk_z: 0, mesh: vec![] }
@@ -86,8 +85,8 @@ impl World {
             } else {
                 let right_chunk = self.get_chunk(x + 1, z).unwrap();
                 let left_chunk = self.get_chunk(x - 1, z).unwrap();
-                let front_chunk = self.get_chunk(x, z - 1).unwrap();
-                let back_chunk = self.get_chunk(x, z + 1).unwrap();
+                let front_chunk = self.get_chunk(x, z + 1).unwrap();
+                let back_chunk = self.get_chunk(x, z - 1).unwrap();
                 mesh = chunk.gen_mesh(right_chunk, left_chunk, front_chunk, back_chunk);
             }
 
@@ -193,15 +192,15 @@ impl World {
         // assume adjacent chunks exist
         let right_chunk = self.get_chunk(chunk_x + 1, chunk_z).unwrap();
         let left_chunk = self.get_chunk(chunk_x - 1, chunk_z).unwrap();
-        let front_chunk = self.get_chunk(chunk_x, chunk_z - 1).unwrap();
-        let back_chunk = self.get_chunk(chunk_x, chunk_z + 1).unwrap();
+        let front_chunk = self.get_chunk(chunk_x, chunk_z + 1).unwrap();
+        let back_chunk = self.get_chunk(chunk_x, chunk_z - 1).unwrap();
         let chunk = self.get_chunk(chunk_x, chunk_z).unwrap();
         let mesh = chunk.gen_mesh(right_chunk, left_chunk, front_chunk, back_chunk); 
 
         self.get_chunk_mut(chunk_x, chunk_z).unwrap().mesh = mesh;
     }
 
-    fn localize_coords_to_chunk(&self, world_x: i32, world_z: i32) -> (i32, i32, usize, usize) {
+    pub fn localize_coords_to_chunk(&self, world_x: i32, world_z: i32) -> (i32, i32, usize, usize) {
         let mut chunk_x = (world_x + if world_x < 0 { 1 } else { 0 }) / 16;
         if world_x < 0 {
             chunk_x -= 1;

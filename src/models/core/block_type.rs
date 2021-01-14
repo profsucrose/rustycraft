@@ -11,7 +11,8 @@ pub enum BlockType {
     Orange,
     Black,
     DarkOrange,
-    Water
+    Water,
+    Sand
 }
 
 pub fn block_to_uv(block_face_type: BlockType, face: Face) -> f32 {
@@ -32,6 +33,7 @@ pub fn block_to_uv(block_face_type: BlockType, face: Face) -> f32 {
         BlockType::DarkOrange => 9.0,
         BlockType::Black => 10.0,
         BlockType::Water => 11.0,
+        BlockType::Sand => 12.0,
         BlockType::Air => panic!("Attempted to get block uv for BlockType::Air"),
     }
 }

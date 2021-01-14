@@ -5,7 +5,7 @@ use crate::models::opengl::camera::Camera;
 use super::world::World;
 
 const GRAVITY: f32 = -0.005;
-const TERMINAL_VEL: f32 = -0.2;
+const TERMINAL_VEL: f32 = -0.6;
 
 pub struct Player {
     pub camera: Camera,
