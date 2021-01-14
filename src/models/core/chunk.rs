@@ -20,7 +20,7 @@ pub struct Chunk {
 
 impl Chunk {
     pub fn new(x_offset: i32, z_offset: i32, simplex: Rc<OpenSimplex>) -> Chunk {
-        let amplitude = 5.0;
+        let amplitude = 6.0;
         let mut blocks = BlockMap::new();
         let mut blocks_in_mesh = Vec::new();
         let x_offset = x_offset * 16;
@@ -30,11 +30,19 @@ impl Chunk {
                 let simplex_x = (x as i32 + x_offset) as f32;
                 let simplex_z = (z as i32 + z_offset) as f32;
                 let noise = gen_heightmap(simplex_x, simplex_z, simplex.clone());
-                let height = (noise * amplitude) as usize;
+                let height = (noise * amplitude) as usize + 3;
                 if noise < 0.4 {
                     // if height is low enough make flat water
-                    for y in 0..(0.4 * amplitude) as usize - 1 {
-                        blocks.set(x, y, z, BlockType::Water);
+                    // let sand_level = 3;
+                    // for y in 0..sand_level {
+                    //     blocks.set(x, y, z, BlockType::Water);
+                    // }
+                    for y in 0..(0.4 * amplitude) as usize + 2 {
+                        if y < height {
+                            blocks.set(x, y, z, BlockType::Sand);
+                        } else {
+                            blocks.set(x, y, z, BlockType::Water);
+                        }
                         blocks_in_mesh.push((x, y, z));
                     }
                 } else {
@@ -115,12 +123,13 @@ impl Chunk {
             let z = z as i32;
             let faces =
                 0
-                | if self.air_at_adj_chunks(x, y, z - 1, right_chunk, left_chunk, front_chunk, back_chunk) { 0b10000000 } else { 0 }
-                | if self.air_at_adj_chunks(x + 1, y, z, right_chunk, left_chunk, front_chunk, back_chunk) { 0b01000000 } else { 0 }
-                | if self.air_at_adj_chunks(x, y, z + 1, right_chunk, left_chunk, front_chunk, back_chunk) { 0b00100000 } else { 0 }
-                | if self.air_at_adj_chunks(x, y - 1, z, right_chunk, left_chunk, front_chunk, back_chunk) { 0b00010000 } else { 0 }
-                | if self.air_at_adj_chunks(x - 1, y, z, right_chunk, left_chunk, front_chunk, back_chunk) { 0b00001000 } else { 0 }
-                | if self.air_at_adj_chunks(x, y + 1, z, right_chunk, left_chunk, front_chunk, back_chunk) { 0b00000100 } else { 0 };
+                | if self.can_place_mesh_face_at_block(x, y, z - 1, block, right_chunk, left_chunk, front_chunk, back_chunk) { 0b10000000 } else { 0 }
+                | if self.can_place_mesh_face_at_block(x + 1, y, z, block, right_chunk, left_chunk, front_chunk, back_chunk) { 0b01000000 } else { 0 }
+                | if self.can_place_mesh_face_at_block(x, y, z + 1, block, right_chunk, left_chunk, front_chunk, back_chunk) { 0b00100000 } else { 0 }
+                | if self.can_place_mesh_face_at_block(x, y - 1, z, block, right_chunk, left_chunk, front_chunk, back_chunk) { 0b00010000 } else { 0 }
+                | if self.can_place_mesh_face_at_block(x - 1, y, z, block, right_chunk, left_chunk, front_chunk, back_chunk) { 0b00001000 } else { 0 }
+                | if self.can_place_mesh_face_at_block(x, y + 1, z, block, right_chunk, left_chunk, front_chunk, back_chunk) { 0b00000100 } else { 0 };
+                
 
             if faces == 0 {
                 continue;
@@ -174,7 +183,7 @@ impl Chunk {
         //self.gen_mesh();
     }
 
-    pub fn air_at(&self, x: i32, y: i32, z: i32) -> bool {
+    pub fn can_place_at_local_spot(&self, x: i32, y: i32, z: i32, block: BlockType) -> bool {
         if y < 0 {
             return false
         }
@@ -185,10 +194,11 @@ impl Chunk {
         //     return true
         // }
 
-        self.blocks.get(x as usize, y as usize, z as usize) == BlockType::Air
+        let block_spot = self.blocks.get(x as usize, y as usize, z as usize);
+        block_spot == BlockType::Air || (block != BlockType::Water && block_spot == BlockType::Water)
     }
 
-    pub fn air_at_adj_chunks(&self, x: i32, y: i32, z: i32, right_chunk: &Chunk, left_chunk: &Chunk, front_chunk: &Chunk, back_chunk: &Chunk) -> bool {
+    pub fn can_place_mesh_face_at_block(&self, x: i32, y: i32, z: i32, block: BlockType, right_chunk: &Chunk, left_chunk: &Chunk, front_chunk: &Chunk, back_chunk: &Chunk) -> bool {
         if y < 0 {
             return false
         }
@@ -196,16 +206,17 @@ impl Chunk {
         // if outside own chunk fetch edge
         // of respective adjacent chunk
         if x == 16 {
-            return right_chunk.air_at(0, y, z);
+            return right_chunk.can_place_at_local_spot(0, y, z, block);
         } else if x == -1 {
-            return left_chunk.air_at(15, y, z);
+            return left_chunk.can_place_at_local_spot(15, y, z, block);
         } else if z == 16 {
-            return front_chunk.air_at(x, y, 0);
+            return front_chunk.can_place_at_local_spot(x, y, 0, block);
         } else if z == -1 {
-            return back_chunk.air_at(x, y, 15);
+            return back_chunk.can_place_at_local_spot(x, y, 15, block);
         }
 
-        self.blocks.get(x as usize, y as usize, z as usize) == BlockType::Air
+        let block_spot = self.blocks.get(x as usize, y as usize, z as usize);
+        block_spot == BlockType::Air || (block_spot == BlockType::Water && block != BlockType::Water)
     }
     
     pub fn highest_in_column(&self, x: usize, z: usize) -> usize {

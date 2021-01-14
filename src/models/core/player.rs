@@ -1,6 +1,6 @@
 use cgmath::Vector3;
 
-use crate::models::opengl::camera::Camera;
+use crate::models::{core::block_type::BlockType, opengl::camera::Camera};
 
 use super::world::World;
 
@@ -27,7 +27,7 @@ impl Player {
         let x = position.x.round() as i32;
         let y = position.y.round() as i32;
         let z = position.z.round() as i32; 
-        if !world.air_at(x, y, z) || !world.air_at(x, y + 1, z) {
+        if !Player::moveable(world, x, y, z) || !Player::moveable(world, x, y + 1, z) {
             self.camera.position = old_position;
         }
     }
@@ -40,7 +40,7 @@ impl Player {
 
 
         let test_y = self.camera.position.y + 0.1 + self.velocity_y as f32;
-        if world.air_at(x, test_y.round() as i32, z) {
+        if Player::moveable(world, x, test_y.round() as i32, z) {
             self.camera.position.y = test_y as f32;
         } else {
             self.velocity_y = TERMINAL_VEL;
@@ -54,6 +54,11 @@ impl Player {
         if self.velocity_y < TERMINAL_VEL {
             self.velocity_y = TERMINAL_VEL;
         }
+    }
+
+    fn moveable(world: &World, world_x: i32, world_y: i32, world_z: i32) -> bool {
+        let block = world.get_block(world_x, world_y, world_z).unwrap();
+        block == BlockType::Air || block == BlockType::Water
     }
 
     pub fn jump(&mut self) {
