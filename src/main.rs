@@ -86,7 +86,7 @@ unsafe fn start() {
     vbo.add_float_attribute(1, 10);
 
     // create world object
-    let mut world = World::new(12);
+    let mut world = World::new(20, "world");
     println!("Initialized new world");
 
     let texture_map = Texture::new(

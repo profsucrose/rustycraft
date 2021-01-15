@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{fs, rc::Rc};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use cgmath::{Vector3, InnerSpace};
@@ -16,28 +16,35 @@ pub struct World {
     simplex: Rc<OpenSimplex>,
     player_chunk_x: i32,
     player_chunk_z: i32,
+    save_dir: String,
     mesh: WorldMesh
 }
 
 // handles world block data and rendering
 impl World {
-    pub fn new(render_distance: u32) -> World {
+    pub fn new(render_distance: u32, save_dir: &str) -> World {
+        let dir = format!("{}/chunks", save_dir);
+        fs::create_dir_all(dir.clone()) 
+            .expect(format!("Failed to recursively create {}", dir.clone()).as_str());
+        let seed_path = format!("{}/seed", save_dir);
+        let seed = fs::read_to_string(seed_path.clone());
+        let seed = match seed {
+            Ok(seed) => seed.parse::<u32>().unwrap(),
+            Err(_) => {
+                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u32;
+                fs::write(seed_path.clone(), format!("{}", seed))
+                    .expect(format!("Failed to write seed to {}", seed_path).as_str());
+                seed
+            }
+        };
+
         let chunks = CoordMap::new();
-        let simplex = OpenSimplex::new().set_seed(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u32);
+        let simplex = OpenSimplex::new().set_seed(seed);
         let simplex = Rc::new(simplex);
         
-        World { chunks, render_distance, simplex, player_chunk_x: 0, player_chunk_z: 0, mesh: vec![] }
+        let save_dir = String::from(save_dir);
+        World { chunks, render_distance, simplex, player_chunk_x: 0, player_chunk_z: 0, save_dir, mesh: vec![] }
     }
-
-    // pub fn get_meshes(&self) -> Vec<&Vec<f32>> {
-    //     let mut mesh = Vec::new();
-    //     for z_axis in self.chunks.iter() {
-    //         for x_axis in z_axis.1.iter() {
-    //             mesh.push(&x_axis.1.mesh);
-    //         }
-    //     }
-    //     mesh
-    // }
 
     pub fn get_world_mesh_from_perspective(&mut self, player_x: i32, player_z: i32, force: bool) -> &WorldMesh {
         let player_chunk_x = player_x / 16;
@@ -105,7 +112,7 @@ impl World {
         match self.chunks.contains(chunk_x, chunk_z) {
             true => self.chunks.get(chunk_x, chunk_z).unwrap(),
             false => {
-                let c = Chunk::new(chunk_x, chunk_z, self.simplex.clone());
+                let c = Chunk::new(chunk_x, chunk_z, self.simplex.clone(), format!("{}/chunks", self.save_dir));
                 self.chunks.insert(chunk_x, chunk_z, c);
                 self.chunks.get(chunk_x, chunk_z).unwrap()
             }
@@ -172,7 +179,7 @@ impl World {
     pub fn set_block(&mut self, world_x: i32, world_y: i32, world_z: i32, block: BlockType) {
         let (chunk_x, chunk_z, local_x, local_z) = self.localize_coords_to_chunk(world_x, world_z);
 
-        // set blok
+        // set block
         {
             let chunk = self.get_chunk_mut(chunk_x, chunk_z).unwrap();
             chunk.set_block(local_x, world_y as usize, local_z, block);
@@ -245,7 +252,7 @@ impl World {
                     // get cube face from ray direction
                     // negated ray is on x-axis
                     let sign = signum(vector.x);
-                    if self.air_at(x + sign, y, z) {
+                    if self.moveable_at(x + sign, y, z) {
                         face = if vector.x > 0.0 {
                             Some(Face::Right)
                         } else {
@@ -257,7 +264,7 @@ impl World {
                     if face.is_none() || abs_y > abs_x { 
                         // negated ray is on y-axis
                         let sign = signum(vector.y);
-                        if self.air_at(x, y + sign, z) {
+                        if self.moveable_at(x, y + sign, z) {
                             face = if vector.y > 0.0 {
                                 Some(Face::Top)
                             } else {
@@ -271,7 +278,7 @@ impl World {
                     if face.is_none() || if face_is_x { abs_z > abs_x } else { abs_z > abs_y } {
                         // negated ray is on z-axis
                         //let sign = signum(vector.z);
-                        if self.air_at(x, y, z + sign) {
+                        if self.moveable_at(x, y, z + sign) {
                             face = if vector.z > 0.0 {
                                 Some(Face::Back)
                             } else {
@@ -289,6 +296,11 @@ impl World {
             }
             range = range - 1;
         }
+    }
+
+    fn moveable_at(&self, world_x: i32, world_y: i32, world_z: i32) -> bool {
+        let block = self.get_block(world_x, world_y, world_z).unwrap();
+        block == BlockType::Air || block == BlockType::Water
     }
 }
 

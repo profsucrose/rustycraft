@@ -1,8 +1,10 @@
-use std::rc::Rc;
+use std::{fs, rc::Rc};
 
 use noise::{NoiseFn, OpenSimplex};
 
 use rand::prelude::*;
+
+use crate::models::core::block_type::index_to_block;
 
 use super::{block_map::BlockMap, block_type::{BlockType, block_to_uv}, face::Face, world::World};
 
@@ -15,11 +17,37 @@ pub struct Chunk {
     blocks_in_mesh: Vec<(usize, usize, usize)>,
     x: i32,
     z: i32,
+    save_path: String,
     pub mesh: Rc<(Vec<f32>, Vec<f32>)> // cache mesh
 }
 
 impl Chunk {
-    pub fn new(x_offset: i32, z_offset: i32, simplex: Rc<OpenSimplex>) -> Chunk {
+    pub fn from(save_path: String, contents: String, x: i32, z: i32) -> Chunk {
+        // follows format
+        // [x] [y] [z] [block_index]
+        // [x1] [y1] [z1] [block_index1]
+        // ...
+        let mut blocks = BlockMap::new();
+        let mut blocks_in_mesh = vec![];
+        for lines in contents.lines() {
+            let words: Vec<&str> = lines.split(" ").collect();
+            let x = words[0].parse::<usize>().unwrap();
+            let y = words[1].parse::<usize>().unwrap();
+            let z = words[2].parse::<usize>().unwrap();
+            let block_index = words[3].parse::<usize>().unwrap();
+            blocks.set(x, y, z, index_to_block(block_index));
+            blocks_in_mesh.push((x, y, z));
+        }
+        Chunk { blocks, blocks_in_mesh, x: x * 16, z: z * 16, save_path, mesh: Rc::new((vec![], vec![])) }
+    }
+
+    pub fn new(x_offset: i32, z_offset: i32, simplex: Rc<OpenSimplex>, chunk_dir: String) -> Chunk {
+        let save_path = format!("{}/{}_{}", chunk_dir, x_offset, z_offset);
+        let contents = fs::read_to_string(save_path.clone());
+        if let Ok(contents) = contents {
+            return Chunk::from(save_path, contents, x_offset, z_offset)
+        }
+
         let amplitude = 6.0;
         let mut blocks = BlockMap::new();
         let mut blocks_in_mesh = Vec::new();
@@ -102,7 +130,9 @@ impl Chunk {
             }
         }
 
-        Chunk { blocks, blocks_in_mesh, x: x_offset, z: z_offset, mesh: Rc::new((vec![], vec![])) }
+        let chunk = Chunk { blocks, blocks_in_mesh, x: x_offset, z: z_offset, save_path, mesh: Rc::new((vec![], vec![])) };
+        chunk.save();
+        chunk
     }
 
     pub fn gen_mesh(&self, right_chunk: &Chunk, left_chunk: &Chunk, front_chunk: &Chunk, back_chunk: &Chunk) -> Rc<(Vec<f32>, Vec<f32>)> {
@@ -172,6 +202,14 @@ impl Chunk {
         Rc::new((vertices, water_vertices))
     }
 
+    fn save(&self) {
+        let mut string = String::new();
+        for (x, y, z) in self.blocks_in_mesh.iter() {
+            string.push_str(format!("{} {} {} {}\n", *x, *y, *z, self.blocks.get(*x, *y, *z) as usize).as_str())
+        }
+        fs::write(self.save_path.clone(), string);
+    }
+
     pub fn block_at(&self, x: usize, y: usize, z: usize) -> BlockType {
         self.blocks.get(x, y, z)
     }
@@ -188,6 +226,7 @@ impl Chunk {
         } else {
             self.blocks_in_mesh.push((x, y, z));
         }
+        self.save();
         //self.gen_mesh();
     }
 
