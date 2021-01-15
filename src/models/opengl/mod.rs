@@ -4,3 +4,5 @@ pub mod text_renderer;
 pub mod texture;
 pub mod vertex_array;
 pub mod vertex_buffer;
+pub mod framebuffer;
+pub mod tex_quad;

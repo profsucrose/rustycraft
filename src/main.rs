@@ -5,9 +5,9 @@ use cgmath::{Matrix4, vec3};
 use glfw::{Action, Context, CursorMode, Key, MouseButton, PixelImage, WindowEvent};
 use gl::types::*;
 use image::{RgbaImage, GenericImage};
-use models::core::player::Player;
+use models::{core::player::Player, opengl::{framebuffer, tex_quad::TexQuad}};
 
-use crate::models::{core::{block_type::BlockType, face::Face, world::World}, opengl::{camera::Camera, shader::Shader, text_renderer::TextRenderer, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}};
+use crate::models::{core::{block_type::BlockType, face::Face, world::World}, opengl::{camera::Camera, framebuffer::FrameBuffer, shader::Shader, text_renderer::TextRenderer, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}};
 
 // settings
 const SCR_WIDTH: u32 = 1000;
@@ -121,6 +121,8 @@ unsafe fn start() {
 
     let mut current_block_index = 0;
 
+    let quad = TexQuad::new("assets/textures/water.png", gl::TEXTURE0, true, SCR_WIDTH, SCR_HEIGHT);
+
     // render loop
     while !window.should_close() {
         let deltatime = instant.elapsed().as_millis() as f32;
@@ -146,6 +148,9 @@ unsafe fn start() {
         // update player altitude
         player.update_alt(&world);
 
+        // bind off-screen framebuffer
+        // framebuffer.bind();
+        gl::Enable(gl::DEPTH_TEST);
 
         // clear buffers
         gl::ClearColor(29.0 / 255.0, 104.0 / 255.0, 224.0 / 255.0, 1.0);
@@ -198,9 +203,16 @@ unsafe fn start() {
 
         let meshes = world.get_world_mesh_from_perspective(player.camera.position.x as i32, player.camera.position.z as i32, force_recalculation);
         force_recalculation = false;
+        // opaque block points
         for mesh in meshes.iter() {
-            vbo.set_data(&mesh, gl::DYNAMIC_DRAW);
-            gl::DrawArrays(gl::POINTS, 0, (mesh.len() / 10) as GLint);
+            vbo.set_data(&mesh.0, gl::DYNAMIC_DRAW);
+            gl::DrawArrays(gl::POINTS, 0, (mesh.0.len() / 10) as GLint);
+        }
+        
+        // transparent block points
+        for mesh in meshes.iter() {
+            vbo.set_data(&mesh.1, gl::DYNAMIC_DRAW);
+            gl::DrawArrays(gl::POINTS, 0, (mesh.1.len() / 10) as GLint);
         }
    
         selected_coords = world.raymarch_block(&player.camera.position, &player.camera.front);
@@ -235,6 +247,19 @@ unsafe fn start() {
             shader.set_mat4("model", Matrix4::from_scale(1.01));
             gl::DrawArrays(gl::POINTS, 0, 1);
         }
+
+        // couldn't get framebuffer to work for post-processing
+        // so draw a blue textured transparent quad for underwater
+        // effect now
+        if player.underwater(&world) {
+            player.camera.speed = 0.003;
+            quad.draw(0.0, 0.0, SCR_WIDTH as f32, SCR_HEIGHT as f32, 0.7);
+        } else {
+            player.camera.speed = 0.008;
+        }
+
+        // draw to main framebuffer
+        // framebuffer.draw();
 
         window.swap_buffers();
         glfw.poll_events();

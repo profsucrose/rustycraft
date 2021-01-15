@@ -15,7 +15,7 @@ pub struct Chunk {
     blocks_in_mesh: Vec<(usize, usize, usize)>,
     x: i32,
     z: i32,
-    pub mesh: Rc<Vec<f32>> // cache mesh
+    pub mesh: Rc<(Vec<f32>, Vec<f32>)> // cache mesh
 }
 
 impl Chunk {
@@ -38,7 +38,7 @@ impl Chunk {
                     //     blocks.set(x, y, z, BlockType::Water);
                     // }
                     for y in 0..(0.4 * amplitude) as usize + 2 {
-                        if y < height {
+                        if y < height - 1 {
                             blocks.set(x, y, z, BlockType::Sand);
                         } else {
                             blocks.set(x, y, z, BlockType::Water);
@@ -102,11 +102,14 @@ impl Chunk {
             }
         }
 
-        Chunk { blocks, blocks_in_mesh, x: x_offset, z: z_offset, mesh: Rc::new(vec![]) }
+        Chunk { blocks, blocks_in_mesh, x: x_offset, z: z_offset, mesh: Rc::new((vec![], vec![])) }
     }
 
-    pub fn gen_mesh(&self, right_chunk: &Chunk, left_chunk: &Chunk, front_chunk: &Chunk, back_chunk: &Chunk) -> Rc<Vec<f32>> {
+    pub fn gen_mesh(&self, right_chunk: &Chunk, left_chunk: &Chunk, front_chunk: &Chunk, back_chunk: &Chunk) -> Rc<(Vec<f32>, Vec<f32>)> {
         let mut vertices = Vec::new();
+        // water is transparent so is in separate
+        // vector to draw after opaque blocks
+        let mut water_vertices = Vec::new();
         for (x, y, z) in self.blocks_in_mesh.iter() {
             // let instant = std::time::Instant::now();
             let x = *x;
@@ -139,9 +142,14 @@ impl Chunk {
             let world_y = y as f32;
             let world_z = (z + self.z) as f32;
             
-            vertices.push(world_x);
-            vertices.push(world_y);
-            vertices.push(world_z);
+            let vertices_to_push_to = if block == BlockType::Water {
+                &mut water_vertices
+            }else {
+                &mut vertices
+            };
+            vertices_to_push_to.push(world_x);
+            vertices_to_push_to.push(world_y);
+            vertices_to_push_to.push(world_z);
             
             for i in 0..6 {
                 let face = match i {
@@ -153,15 +161,15 @@ impl Chunk {
                     5 => Face::Top,
                     _ => panic!("Attempted to convert invalid index to face when setting vertex texture UV indices")
                 };
-                vertices.push(block_to_uv(block, face));
+                vertices_to_push_to.push(block_to_uv(block, face));
             }
 
-            vertices.push(faces as f32);
+            vertices_to_push_to.push(faces as f32);
             // println!("Took {:?} to add a block", instant.elapsed());
         }
         //self.mesh = Rc::new(vertices);
 
-        Rc::new(vertices)
+        Rc::new((vertices, water_vertices))
     }
 
     pub fn block_at(&self, x: usize, y: usize, z: usize) -> BlockType {

@@ -6,6 +6,9 @@ use noise::{OpenSimplex, Seedable};
 
 use super::{block_type::BlockType, chunk::Chunk, coord_map::CoordMap, face::Face};
 
+// Vector of Rc of a tuple of opaque and then transparent block point vertices
+type WorldMesh = Vec<Rc<(Vec<f32>, Vec<f32>)>>; 
+
 #[derive(Clone)]
 pub struct World {
     chunks: CoordMap<Chunk>,
@@ -13,7 +16,7 @@ pub struct World {
     simplex: Rc<OpenSimplex>,
     player_chunk_x: i32,
     player_chunk_z: i32,
-    mesh: Vec<Rc<Vec<f32>>>
+    mesh: WorldMesh
 }
 
 // handles world block data and rendering
@@ -36,7 +39,7 @@ impl World {
     //     mesh
     // }
 
-    pub fn get_world_mesh_from_perspective(&mut self, player_x: i32, player_z: i32, force: bool) -> &Vec<Rc<Vec<f32>>> {
+    pub fn get_world_mesh_from_perspective(&mut self, player_x: i32, player_z: i32, force: bool) -> &WorldMesh {
         let player_chunk_x = player_x / 16;
         let player_chunk_z = player_z / 16;
         if !force 
@@ -80,7 +83,7 @@ impl World {
 
             let mesh;
             let chunk = self.get_chunk(x, z).unwrap();
-            if chunk.mesh.len() != 0 {
+            if chunk.mesh.0.len() != 0 {
                 mesh = chunk.mesh.clone();
             } else {
                 let right_chunk = self.get_chunk(x + 1, z).unwrap();
@@ -231,7 +234,7 @@ impl World {
 
             let block = self.get_block(x, y, z);
             if let Some(block) = block {
-                if block != BlockType::Air {
+                if block != BlockType::Air && block != BlockType::Water {
                     let vector = (*position - (check_position - dir)).normalize();
                     let abs_x = vector.x.abs();
                     let abs_y = vector.y.abs();

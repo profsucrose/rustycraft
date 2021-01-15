@@ -38,7 +38,6 @@ impl Player {
         let z = self.camera.position.z.round() as i32;
         let ground_y = world.highest_in_column_from_y(x, y, z).unwrap() + 2;
 
-
         let test_y = self.camera.position.y + 0.1 + self.velocity_y as f32;
         if Player::moveable(world, x, test_y.round() as i32, z) {
             self.camera.position.y = test_y as f32;
@@ -54,6 +53,13 @@ impl Player {
         if self.velocity_y < TERMINAL_VEL {
             self.velocity_y = TERMINAL_VEL;
         }
+    }
+
+    pub fn underwater(&self, world: &World) -> bool {
+        let player_x = self.camera.position.x.round() as i32;
+        let player_y = self.camera.position.y.round() as i32;
+        let player_z = self.camera.position.z.round() as i32;
+        world.get_block(player_x, player_y, player_z).unwrap() == BlockType::Water
     }
 
     fn moveable(world: &World, world_x: i32, world_y: i32, world_z: i32) -> bool {
