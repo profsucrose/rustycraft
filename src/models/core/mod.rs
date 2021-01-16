@@ -5,3 +5,4 @@ pub mod coord_map;
 pub mod face;
 pub mod world;
 pub mod player;
+pub mod window_mode;

@@ -207,7 +207,8 @@ impl Chunk {
         for (x, y, z) in self.blocks_in_mesh.iter() {
             string.push_str(format!("{} {} {} {}\n", *x, *y, *z, self.blocks.get(*x, *y, *z) as usize).as_str())
         }
-        fs::write(self.save_path.clone(), string);
+        fs::write(self.save_path.clone(), string)
+            .expect(format!("Failed to save chunk to {}", self.save_path.clone()).as_str());
     }
 
     pub fn block_at(&self, x: usize, y: usize, z: usize) -> BlockType {
@@ -277,14 +278,14 @@ impl Chunk {
 
 fn gen_heightmap(x: f32, z: f32, simplex: Rc<OpenSimplex>) -> f32 {
     // get distance from center
-    let nx = x / 4.0 - 0.5;
-    let nz = z / 4.0 - 0.5;
+    let nx = x / 20.0 - 0.5;
+    let nz = z / 20.0 - 0.5;
     let d = (nx * nx + nz * nz).sqrt() / (0.5 as f32).sqrt(); 
 
     let height = 5.0 * sample_simplex(x / 35.0, z / 35.0, simplex.clone())
     + 2.0 * sample_simplex(x / 10.0, z / 10.0, simplex.clone())
     + 0.25 * sample_simplex(x / 4.0, z / 4.0, simplex.clone());
-    let height = height.powf(1.2);
+    let height = height.powf(2.0);
     (1.0 + height - d.powf(0.5)) / 2.0
 }
 

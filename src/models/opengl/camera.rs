@@ -102,8 +102,9 @@ impl Camera {
         // clamp fov
         if self.fov < 1.0 {
             self.fov = 1.0
-        } else if self.fov > 150.0 {
-            self.fov = 150.0
+        } 
+        else if self.fov > 170.0 {
+            self.fov = 170.0
         }
     }
 

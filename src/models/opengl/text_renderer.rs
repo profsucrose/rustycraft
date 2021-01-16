@@ -1,5 +1,5 @@
 use std::{collections::HashMap, ffi::c_void, ptr};
-use cgmath::{Vector2, Vector3, ortho, vec2};
+use cgmath::{Matrix4, Vector2, Vector3, ortho, vec2};
 use freetype::Library;
 use gl::types::*;
 
@@ -8,7 +8,7 @@ use super::shader::Shader;
 pub struct Character {
     texture_id: u32, // glyph texture ID
     size: Vector2<i32>, // size of glyph
-    bearing: Vector2<i32>, // offset from baseline to left/top of glyph
+    pub bearing: Vector2<i32>, // offset from baseline to left/top of glyph
     advance: i64 // offset to advance to next glyph
 }
 
@@ -116,19 +116,42 @@ impl TextRenderer {
         TextRenderer { char_cache, vao, vbo, shader, screen_width, screen_height }
     }
 
-    pub unsafe fn render_text(&self, text: &str, mut x: f32, y: f32, scale: f32, color: Vector3<f32>) {
+    pub unsafe fn render_text(&self, text: &str, x: f32, y: f32, scale: f32, color: Vector3<f32>) {
+        self.render_text_with_mat(text, x, y, scale, color, Matrix4::<f32>::from_scale(1.0), false);
+    }
+
+    pub unsafe fn render_text_centered(&self, text: &str, x: f32, y: f32, scale: f32, color: Vector3<f32>) {
+        self.render_text_with_mat(text, x, y, scale, color, Matrix4::<f32>::from_scale(1.0), true);
+    }
+
+    pub fn get_char(&self, c: char) -> &Character {
+        &self.char_cache[&(c as usize)]
+    }
+
+    pub unsafe fn render_text_with_mat(&self, text: &str, mut x: f32, y: f32, scale: f32, color: Vector3<f32>, model: Matrix4<f32>, centered: bool) {
         self.shader.use_program();
         self.shader.set_mat4("projection", ortho(0.0, self.screen_width as f32, 0.0, self.screen_height as f32, -1.0, 100.0));
         self.shader.set_vec3("textColor", color);
+        self.shader.set_mat4("model", model);
         gl::ActiveTexture(gl::TEXTURE0);
         gl::BindVertexArray(self.vao);
     
+        if centered {
+            let mut w = 0.0;
+            for c in text.bytes() {
+                let ch = &self.char_cache[&(c as usize)];
+                w += ((ch.advance >> 6) as f32) * scale;
+            }
+            x = x - w / 2.0;
+        }
+
         for c in text.bytes() {
             let ch = &self.char_cache[&(c as usize)];
     
             let x_pos = x + (ch.bearing.x as f32) * scale;
             let y_pos = match c {
                 // hacky solution to properly adjust '-' and '^' respectively
+                39 => y + (ch.bearing.y as f32 / 2.0),
                 45 => y + (ch.bearing.y as f32 / 2.0),
                 94 => y + ch.bearing.y as f32 / 4.0,
                 _ => y

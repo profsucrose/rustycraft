@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::fs;
 use std::ffi::CString;
 use cgmath::{Matrix, Matrix4, Vector3};

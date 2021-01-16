@@ -22,28 +22,37 @@ pub struct World {
 
 // handles world block data and rendering
 impl World {
-    pub fn new(render_distance: u32, save_dir: &str) -> World {
-        let dir = format!("{}/chunks", save_dir);
+    pub fn new_with_seed(render_distance: u32, save_dir: &str, seed: u32) -> World {
+        // create world directory if it does not exist
+        let dir = format!("worlds/{}/chunks", save_dir);
         fs::create_dir_all(dir.clone()) 
             .expect(format!("Failed to recursively create {}", dir.clone()).as_str());
-        let seed_path = format!("{}/seed", save_dir);
-        let seed = fs::read_to_string(seed_path.clone());
-        let seed = match seed {
-            Ok(seed) => seed.parse::<u32>().unwrap(),
-            Err(_) => {
-                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u32;
-                fs::write(seed_path.clone(), format!("{}", seed))
-                    .expect(format!("Failed to write seed to {}", seed_path).as_str());
-                seed
-            }
-        };
 
         let chunks = CoordMap::new();
         let simplex = OpenSimplex::new().set_seed(seed);
         let simplex = Rc::new(simplex);
         
-        let save_dir = String::from(save_dir);
+        let save_dir = format!("worlds/{}", save_dir);
         World { chunks, render_distance, simplex, player_chunk_x: 0, player_chunk_z: 0, save_dir, mesh: vec![] }
+    }
+
+    pub fn new(render_distance: u32, save_dir: &str) -> World {
+        let seed_path = format!("worlds/{}/seed", save_dir);
+        let seed = fs::read_to_string(seed_path.clone());
+        // read seed from world dir otherwise create
+        // one and write to disk
+        let seed = match seed {
+            Ok(seed) => seed.parse::<u32>().unwrap(),
+            Err(_) => {
+                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u32;
+                fs::create_dir_all(format!("worlds/{}", save_dir))
+                    .expect("Failed to create world directory");
+                fs::write(seed_path.clone(), format!("{}", seed))
+                    .expect(format!("Failed to write seed to {}", seed_path).as_str());
+                seed
+            }
+        };
+        World::new_with_seed(render_distance, save_dir, seed)
     }
 
     pub fn get_world_mesh_from_perspective(&mut self, player_x: i32, player_z: i32, force: bool) -> &WorldMesh {
@@ -128,21 +137,6 @@ impl World {
 
     pub fn get_chunk(&self, chunk_x: i32, chunk_z: i32) -> Option<&Chunk> {
         self.chunks.get(chunk_x, chunk_z)
-    }
-
-    pub fn air_at(&self, world_x: i32, world_y: i32, world_z: i32) -> bool {
-        if world_y < 0 {
-            return false;
-        }
-
-        let (chunk_x, chunk_z, local_x, local_z) = self.localize_coords_to_chunk(world_x, world_z);
-        //let instant = std::time::Instant::now();
-        let chunk = self.get_chunk(chunk_x, chunk_z);
-        //println!("Took {:?} to fetch chunk", instant.elapsed());
-        match chunk {
-            Some(chunk) => chunk.block_at(local_x, world_y as usize, local_z) == BlockType::Air, 
-            None => true
-        } 
     }
 
     pub fn get_block(&self, world_x: i32, world_y: i32, world_z: i32) -> Option<BlockType> {
