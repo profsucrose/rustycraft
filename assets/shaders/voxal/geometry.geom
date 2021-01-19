@@ -9,7 +9,6 @@ uniform mat4 projection;
 out vec2 TexCoord;
 
 in VS_OUT {
-    float blockIndex;
     float[6] blockUVIndices;
     int facesToDraw;
 } gs_in[];  

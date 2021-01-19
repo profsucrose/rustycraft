@@ -1,6 +1,6 @@
 use cgmath::Vector3;
 
-use crate::models::{core::block_type::BlockType, opengl::camera::Camera};
+use crate::models::{core::block_type::BlockType, opengl::camera::Camera, traits::game_world::GameWorld};
 
 use super::world::World;
 
@@ -19,7 +19,7 @@ impl Player {
         Player { camera, is_jumping: false, velocity_y: TERMINAL_VEL }
     }
 
-    pub fn update_position(&mut self, world: &World, deltatime: f32) {
+    pub fn update_position(&mut self, world: &impl GameWorld, deltatime: f32) {
         let old_position = self.camera.position.clone();
         self.camera.update_position(deltatime); 
         let sign = if self.camera.moving_backward { -1.0 } else { 1.0 };
@@ -27,19 +27,23 @@ impl Player {
         let x = position.x.round() as i32;
         let y = position.y.round() as i32;
         let z = position.z.round() as i32; 
-        if !Player::moveable(world, x, y, z) || !Player::moveable(world, x, y + 1, z) {
+        if !world.moveable(x, y, z) || !world.moveable(x, y + 1, z) {
             self.camera.position = old_position;
         }
     }
 
-    pub fn update_alt(&mut self, world: &World) {
+    pub fn update_alt(&mut self, world: &impl GameWorld) {
         let x = self.camera.position.x.round() as i32;
         let y = (self.camera.position.y + 0.04).round() as i32;
         let z = self.camera.position.z.round() as i32;
-        let ground_y = world.highest_in_column_from_y(x, y, z).unwrap() + 2;
+        let ground_y = world.highest_in_column_from_y(x, y, z);
+        if ground_y.is_none() {
+            return;
+        }
 
+        let ground_y = ground_y.unwrap() + 2;
         let test_y = self.camera.position.y + 0.1 + self.velocity_y as f32;
-        if Player::moveable(world, x, test_y.round() as i32, z) {
+        if world.moveable(x, test_y.round() as i32, z) {
             self.camera.position.y = test_y as f32;
         } else {
             self.velocity_y = TERMINAL_VEL;
@@ -55,16 +59,14 @@ impl Player {
         }
     }
 
-    pub fn underwater(&self, world: &World) -> bool {
+    pub fn underwater(&self, world: &impl GameWorld) -> bool {
         let player_x = self.camera.position.x.round() as i32;
         let player_y = self.camera.position.y.round() as i32;
         let player_z = self.camera.position.z.round() as i32;
-        world.get_block(player_x, player_y, player_z).unwrap() == BlockType::Water
-    }
-
-    fn moveable(world: &World, world_x: i32, world_y: i32, world_z: i32) -> bool {
-        let block = world.get_block(world_x, world_y, world_z).unwrap();
-        block == BlockType::Air || block == BlockType::Water
+        match world.get_block(player_x, player_y, player_z) {
+            Some(block) => block == BlockType::Water,
+            None => false
+        }
     }
 
     pub fn jump(&mut self) {

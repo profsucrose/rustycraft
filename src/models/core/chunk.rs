@@ -4,7 +4,7 @@ use noise::{NoiseFn, OpenSimplex};
 
 use rand::prelude::*;
 
-use crate::models::core::block_type::index_to_block;
+use crate::models::{core::block_type::index_to_block, traits::game_chunk::GameChunk};
 
 use super::{block_map::BlockMap, block_type::{BlockType, block_to_uv}, face::Face, world::World};
 
@@ -19,6 +19,12 @@ pub struct Chunk {
     z: i32,
     save_path: String,
     pub mesh: Rc<(Vec<f32>, Vec<f32>)> // cache mesh
+}
+
+impl GameChunk for Chunk {
+    fn get_blocks(&self) -> &BlockMap {
+        &self.blocks
+    }
 }
 
 impl Chunk {
@@ -48,7 +54,7 @@ impl Chunk {
             return Chunk::from(save_path, contents, x_offset, z_offset)
         }
 
-        let amplitude = 6.0;
+        let amplitude = 5.0;
         let mut blocks = BlockMap::new();
         let mut blocks_in_mesh = Vec::new();
         let x_offset = x_offset * 16;
@@ -278,14 +284,14 @@ impl Chunk {
 
 fn gen_heightmap(x: f32, z: f32, simplex: Rc<OpenSimplex>) -> f32 {
     // get distance from center
-    let nx = x / 20.0 - 0.5;
-    let nz = z / 20.0 - 0.5;
+    let nx = x / 5.0 - 0.5;
+    let nz = z / 5.0 - 0.5;
     let d = (nx * nx + nz * nz).sqrt() / (0.5 as f32).sqrt(); 
 
     let height = 5.0 * sample_simplex(x / 35.0, z / 35.0, simplex.clone())
     + 2.0 * sample_simplex(x / 10.0, z / 10.0, simplex.clone())
     + 0.25 * sample_simplex(x / 4.0, z / 4.0, simplex.clone());
-    let height = height.powf(2.0);
+    let height = height.powf(1.3);
     (1.0 + height - d.powf(0.5)) / 2.0
 }
 

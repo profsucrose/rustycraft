@@ -8,3 +8,5 @@ pub mod framebuffer;
 pub mod tex_quad;
 pub mod button;
 pub mod input;
+pub mod player_model;
+pub mod element_buffer;

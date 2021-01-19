@@ -1,6 +1,7 @@
 use super::face::Face;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Deserialize, Serialize)]
 pub enum BlockType {
     Grass = 0,
     Dirt,

@@ -9,7 +9,6 @@ layout (location = 6) in float aTopUV;
 layout (location = 7) in float aFacesToDraw;
 
 out VS_OUT {
-    float blockIndex;
     float[6] blockUVIndices;
     int facesToDraw;
 } vs_out;
@@ -17,7 +16,6 @@ out VS_OUT {
 void main() {
     gl_Position = vec4(aPos, 1.0);
     // TexCoord = aTexCoord;
-    vs_out.blockIndex = aFrontUV;
     vs_out.blockUVIndices = float[6](aFrontUV, aRightUV, aBackUV, aBottomUV, aLeftUV, aTopUV);
     vs_out.facesToDraw = int(aFacesToDraw);
     // position = aPos;

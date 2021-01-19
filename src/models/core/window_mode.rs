@@ -4,5 +4,6 @@ pub enum WindowMode {
     Title,
     OpenWorld,
     ConnectToServer,
-    InWorld
+    InWorld,
+    InServer
 }

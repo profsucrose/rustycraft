@@ -27,7 +27,7 @@ impl Input {
         self.focused = mouse_x > self.left_x && mouse_x < self.right_x && mouse_y > self.bottom_y && mouse_y < self.top_y;
     }
 
-    pub fn type_key(&mut self, key: Key) {
+    pub fn type_key(&mut self, key: Key, shift: bool) {
         if !self.focused {
             return;
         }
@@ -45,7 +45,20 @@ impl Input {
         }
 
         let ch_id = (key as usize - Key::A as usize) + 65;
-        self.text.push_str((ch_id as u8 as char).to_lowercase().to_string().as_str());
+        println!("Char code decimal: {}", ch_id);
+        let ch = if shift {
+            // ; -> :
+            let ch_id = if ch_id == 59 {
+                58
+            } else {
+                ch_id
+            };
+            (ch_id as u8 as char).to_uppercase().nth(0).unwrap()
+        } else {
+            (ch_id as u8 as char).to_lowercase().nth(0).unwrap()
+        };
+
+        self.text.push_str(ch.to_string().as_str());
     }
 
     pub unsafe fn draw(&self, text_renderer: &TextRenderer) {
@@ -56,6 +69,15 @@ impl Input {
         // draw text
         text_renderer.render_text_centered(self.text.as_str(), text_x, text_y, 1.0, Vector3::new(1.0, 1.0, 1.0));
         
+        if self.focused {
+            let width = text_renderer.calc_width(self.text.as_str(), 1.0);
+            let mut underscore_x = text_x + width / 2.0;
+            if self.text.len() > 0 {
+                underscore_x += 1.0;
+            }
+            text_renderer.render_text("_", underscore_x, text_y, 1.0, Vector3::new(1.0, 1.0, 1.0));
+        }
+
         // text shadow
 
         self.texquad.draw(self.left_x, self.bottom_y, self.right_x, self.top_y, 1.0);

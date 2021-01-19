@@ -102,14 +102,13 @@ impl Camera {
         // clamp fov
         if self.fov < 1.0 {
             self.fov = 1.0
-        } 
-        else if self.fov > 170.0 {
-            self.fov = 170.0
+        } else if self.fov > 150.0 {
+            self.fov = 150.0
         }
     }
 
     pub fn get_projection(&self) -> Matrix4<f32> {
-        perspective(Deg(self.fov), (self.screen_width as f32) / (self.screen_height as f32), 0.1, 1000.0)
+        perspective(Deg(self.fov), (self.screen_width as f32) / (self.screen_height as f32), 0.01, 1000.0)
     }    
 
     pub fn get_view(&self) -> Matrix4<f32> {

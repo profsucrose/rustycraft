@@ -1,18 +1,20 @@
 #![allow(unused_imports)]
 mod models;      
 
-use std::{ffi::c_void, fs, mem, path::Path, ptr, sync::mpsc::Receiver, time::Instant};
-use cgmath::{Deg, Matrix4, Vector3, vec3};
+use std::{ffi::c_void, fs, mem, path::Path, ptr, sync::{Arc, Mutex, mpsc::Receiver}, time::Instant};
+use cgmath::{Deg, Matrix3, Matrix4, Vector3, vec3};
 use glfw::{Action, Context, CursorMode, Key, MouseButton, PixelImage, WindowEvent};
 use gl::types::*;
 use image::{RgbaImage, GenericImage};
-use models::{core::player::Player, opengl::{tex_quad::TexQuad}};
+use models::{core::{block_type::index_to_block, player::Player}, opengl::{tex_quad::TexQuad}};
 
-use crate::models::{core::{block_type::BlockType, face::Face, window_mode::WindowMode, world::World}, opengl::{button::Button, camera::Camera, framebuffer::FrameBuffer, input::Input, shader::Shader, text_renderer::TextRenderer, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}};
+use crate::models::{core::{block_type::BlockType, face::Face, window_mode::WindowMode, world::World}, multiplayer::{rc_message::RustyCraftMessage, server_connection::ServerConnection, server_world::ServerWorld}, opengl::{button::Button, camera::Camera, framebuffer::FrameBuffer, input::Input, player_model::PlayerModel, shader::Shader, text_renderer::TextRenderer, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}, traits::game_world::GameWorld};
 
 // settings
 const SCR_WIDTH: u32 = 1000;
 const SCR_HEIGHT: u32 = 600;
+
+const SERVER_RENDER_DISTANCE: u32 = 10;
 
 fn main() {
     // wrap program in helper
@@ -54,7 +56,6 @@ unsafe fn start() {
 
     // capture mouse
     let mut mouse_captured = true;
-    // window.set_cursor_mode(CursorMode::Disabled);
 
     // gl: load all OpenGL function pointers
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const _);
@@ -62,11 +63,14 @@ unsafe fn start() {
     // depth buffer
     gl::Enable(gl::DEPTH_TEST);
 
+    // face culling
+    //gl::Enable(gl::CULL_FACE);
+
     // blending
     gl::Enable(gl::BLEND);
     gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
 
-    let shader = Shader::new_with_geom("assets/shaders/vertex.vert", "assets/shaders/fragment.frag", "assets/shaders/geometry.geom");
+    let shader = Shader::new_with_geom("assets/shaders/voxal/vertex.vert", "assets/shaders/voxal/fragment.frag", "assets/shaders/voxal/geometry.geom");
 
     // create vertex array
     let vao = VertexArray::new(); 
@@ -105,7 +109,7 @@ unsafe fn start() {
     let mut first_mouse = true;
 
     // init text renderer
-    let text_renderer = TextRenderer::new(SCR_WIDTH, SCR_HEIGHT, "assets/font/OldSchoolAdventures.ttf", "assets/shaders/text_vertex.vert", "assets/shaders/text_fragment.frag");
+    let text_renderer = TextRenderer::new(SCR_WIDTH, SCR_HEIGHT, "assets/font/OldSchoolAdventures.ttf");
 
     // target fps
     let target_fps = 60.0;
@@ -116,7 +120,7 @@ unsafe fn start() {
 
     let mut current_block_index = 0;
 
-    let quad = TexQuad::new("assets/textures/water.png", gl::TEXTURE0, true, SCR_WIDTH, SCR_HEIGHT);
+    let water_tint_quad = TexQuad::new("assets/textures/water.png", gl::TEXTURE0, true, SCR_WIDTH, SCR_HEIGHT);
 
     let mut menu_world = World::new_with_seed(10, "menu_world", 0);
 
@@ -128,6 +132,9 @@ unsafe fn start() {
 
     let mut yellow_text_size: f32 = 0.0;
 
+    // GUI Widgets 
+    // ----------
+    // buttons
     let button_width = 420.0;
     let button_height = 48.0;
     let button_x = SCR_WIDTH as f32 / 2.0;
@@ -136,20 +143,30 @@ unsafe fn start() {
     let connect_button = Button::new("Connect", button_x, 210.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
     let back_button = Button::new("Back", button_x, 140.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
     let connect_to_server_button = Button::new("Connect to Server", button_x, 210.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
+    
+    // inputs
     let mut open_world_input = Input::new(button_x, 280.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
+    let mut connect_to_server_input = Input::new(button_x, 280.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
 
-    let last_world = fs::read_to_string(".last_world");
+    let last_world = fs::read_to_string("game_data/last_world");
     if last_world.is_ok() {
         open_world_input.text = last_world.unwrap();
     }
-
-    let mut connect_to_server_input = Input::new(button_x, 280.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
+    
+    let last_server = fs::read_to_string("game_data/last_server");
+    if last_server.is_ok() {
+        connect_to_server_input.text = last_server.unwrap();
+    }
 
     // window
-    let mut window_mode = WindowMode::Title;
+    let mut window_mode = WindowMode::ConnectToServer;
 
     // placeholder world object
     let mut world = None;
+    let mut server_connection = None;
+    let mut server_world = None;
+    let mut did_just_fail_to_connect = false;
+    let mut shift_pressed = false;
 
     // render loop
     while !window.should_close() {
@@ -171,17 +188,14 @@ unsafe fn start() {
                             last_y = y as f32;
                         },
                         WindowEvent::MouseButton(MouseButton::Button1, Action::Press, _) => {
-                            println!("Clicked");
                             let last_y = SCR_HEIGHT as f32 - last_y;
                             match window_mode {
                                 WindowMode::Title => {
                                     if select_worlds_button.is_hovered(last_x, last_y) {
-                                        println!("Select worlds clicked!");
                                         window_mode = WindowMode::OpenWorld;
                                     }
         
                                     if connect_to_server_button.is_hovered(last_x, last_y) {
-                                        println!("Connect to server clicked!");
                                         window_mode = WindowMode::ConnectToServer;
                                     }
                                 },
@@ -192,33 +206,83 @@ unsafe fn start() {
                                     }
 
                                     if open_world_button.is_hovered(last_x, last_y) {
-                                        let mut world_object = World::new(13, open_world_input.text.clone().as_str());
+                                        let mut world_object = World::new(30, open_world_input.text.clone().as_str());
                                         world_object.recalculate_mesh_from_perspective(0, 0);
-                                        player.camera.position.y = world_object.highest_in_column(0, 0).unwrap() as f32 + 2.0;
+                                        
+                                        let last_player_pos = fs::read_to_string(format!("game_data/worlds/{}/player_pos", open_world_input.text.clone().as_str()));
+                                        if let Ok(player_pos_str) = last_player_pos {
+                                            let words: Vec<&str> = player_pos_str.split(" ").collect();
+                                            let x = words[0].parse::<f32>();
+                                            let y = words[1].parse::<f32>();
+                                            let z = words[2].parse::<f32>();
+
+                                            if let Ok(x) = x {
+                                                player.camera.position.x = x;
+                                            }
+
+                                            if let Ok(y) = y {
+                                                player.camera.position.y = y;
+                                            }
+
+                                            if let Ok(z) = z {
+                                                player.camera.position.z = z;
+                                            }
+                                        } else {
+                                            player.camera.position.y = world_object.highest_in_column(0, 0).unwrap() as f32 + 2.0;
+                                        }
+                                        
                                         world = Some(world_object);
                                         window_mode = WindowMode::InWorld;
                                         window.set_cursor_mode(CursorMode::Disabled);
-                                        fs::write(".last_world", open_world_input.text.clone())
+                                        current_block_index = 0;
+                                        fs::write("game_data/last_world", open_world_input.text.clone())
                                             .expect("Failed to write world input text to file");
                                     }
                                 },
                                 WindowMode::ConnectToServer => {
                                     connect_to_server_input.update_focus(last_x, last_y);
+                                    if connect_button.is_hovered(last_x, last_y) {
+                                        let address = connect_to_server_input.text.clone();
+                                        let connection = ServerConnection::new(address.clone());
+                                        match connection {
+                                            Err(_) => {
+                                                did_just_fail_to_connect = true;
+                                            },
+                                            Ok(connection) => {
+                                                let mut world = ServerWorld::new(SERVER_RENDER_DISTANCE, connection.clone());
+                                                world.recalculate_mesh_from_perspective(0, 0);
+                                                let world = Arc::new(Mutex::new(world));
+                                                server_world = Some(world.clone());
+                                                connection.clone().create_listen_thread(world.clone());
+                                                server_connection = Some(connection.clone());
+                                                window.set_cursor_mode(CursorMode::Disabled);
+                                                window_mode = WindowMode::InServer;
+                                                fs::write("game_data/last_server", address.clone())
+                                                    .expect("Failed to write world input text to file");
+                                                did_just_fail_to_connect = false;
+                                                current_block_index = 0;
+                                            }
+                                        }
+                                    }
+
                                     if back_button.is_hovered(last_x, last_y) {
                                         window_mode = WindowMode::Title;
+                                        did_just_fail_to_connect = false;
                                     }
                                 },
                                 _ => ()
                             }
                         },
                         WindowEvent::Key(Key::Escape, _, Action::Press, _) => window.set_should_close(true),
+                        WindowEvent::Key(Key::LeftShift, _, Action::Press, _) => shift_pressed = true,
+                        WindowEvent::Key(Key::LeftShift, _, Action::Release, _) => shift_pressed = false,
                         WindowEvent::Key(key, _, Action::Press, _) => {
                             match window_mode {
                                 WindowMode::OpenWorld => {
-                                    open_world_input.type_key(key);
+                                    open_world_input.type_key(key, shift_pressed);
                                 },
                                 WindowMode::ConnectToServer => {
-                                    connect_to_server_input.type_key(key);
+                                    connect_to_server_input.type_key(key, shift_pressed);
                                 },
                                 _ => ()
                             }
@@ -228,7 +292,7 @@ unsafe fn start() {
                 }
 
                 // if window mode was changed to InWorld:
-                if window_mode == WindowMode::InWorld {
+                if window_mode == WindowMode::InWorld || window_mode == WindowMode::InServer {
                     continue;
                 }
     
@@ -236,7 +300,7 @@ unsafe fn start() {
                 // button.draw(x, 180.0, x + 200.0, 230.0, 1.0);
     
                 yellow_text_size += 0.075;
-    
+                
                 // shader uniforms
                 shader.use_program();
                 // transforms
@@ -291,16 +355,15 @@ unsafe fn start() {
                         connect_button.draw(&text_renderer, last_x, last_y);
                         connect_to_server_input.draw(&text_renderer);
                         back_button.draw(&text_renderer, last_x, last_y);
+                        if did_just_fail_to_connect {
+                            text_renderer.render_text("Failed to Connect", button_x - 210.0, 310.0, 1.0, Vector3::new(1.0, 1.0, 1.0));
+                        }
                     },
-                    _ => panic!("Attempted to display window mode without a title menu")
+                    _ => panic!("Attempted to display window mode that was not a title menu")
                 };
                 
                 open_world_input.draw(&text_renderer);
             },
-            // WindowMode::WorldMenu => {
-            //     // text_renderer.render_text("World Menu", 0.0, 0.0, 1.0, Vector3::new(1.0, 0.0, 0.0));
-            //     select_world_background.draw(0.0, 0.0, SCR_WIDTH as f32, SCR_HEIGHT as f32, 1.0);
-            // },
             WindowMode::InWorld => {
                 let mut world = world.as_mut().unwrap();
 
@@ -320,28 +383,32 @@ unsafe fn start() {
                     &mut window_mode
                 );
 
-                player.update_position(&world, deltatime);
+                player.update_position(world, deltatime);
 
                 // update player altitude
-                player.update_alt(&world);
+                player.update_alt(world);
 
-                // draw tex
+                // draw text
                 text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 1.0, 1.0));
                 text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, vec3(1.0, 1.0, 1.0));
                 text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, vec3(1.0, 1.0, 1.0));
                 text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 1.0, 1.0));
-                let block = match current_block_index {
-                    0 => BlockType::Dirt,
-                    1 => BlockType::Grass,
-                    2 => BlockType::Stone,
-                    3 => BlockType::Log,
-                    4 => BlockType::Leaves,
-                    5 => BlockType::Orange,
-                    6 => BlockType::DarkOrange,
-                    7 => BlockType::Black,
-                    _ => BlockType::Air
-                };
+                let block = index_to_block(current_block_index); 
                 text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 110.0, 0.6, vec3(1.0, 1.0, 1.0));
+
+                // draw players
+                // let position = &player.camera.position;
+                // player_model.draw(&player.camera, 0.0, position.y, 0.0);
+                // text_renderer.render_text3d(
+                //     &player.camera, 
+                //     "Prof. Sucrose", 
+                //     2.0, 
+                //     20.0,
+                //     17.0, 
+                //     0.005, 
+                //     Vector3::new(1.0, 1.0, 1.0), 
+                //     true
+                // );
 
                 // shader uniforms
                 shader.use_program();
@@ -374,38 +441,155 @@ unsafe fn start() {
         
                 selected_coords = world.raymarch_block(&player.camera.position, &player.camera.front);
                 if let Some(((x, y, z), Some(face))) = selected_coords {
-                    let mut mesh = Vec::new();
-                    mesh.push(x as f32);
-                    mesh.push(y as f32);
-                    mesh.push(z as f32);
-                    for _ in 0..6 {
-                        mesh.push(7.0);
-                    };
-
-                    let face_to_draw = match face {
-                        Face::Front     => 0b10000000,
-                        Face::Right     => 0b01000000,
-                        Face::Back      => 0b00100000,
-                        Face::Bottom    => 0b00010000,
-                        Face::Left      => 0b00001000,
-                        Face::Top       => 0b00000100,
-                    };
-                    mesh.push(face_to_draw as f32);
-                    vbo.set_data(&mesh, gl::DYNAMIC_DRAW);
-
-                    shader.set_mat4("model", Matrix4::from_scale(1.01));
-                    gl::DrawArrays(gl::POINTS, 0, 1);
+                    draw_block_selector(x, y, z, face, &shader, &vbo);
                 }
 
                 // couldn't get framebuffer to work for post-processing
                 // so draw a blue textured transparent quad for underwater
                 // effect now
-                if player.underwater(&world) {
+                if player.underwater(world) {
                     player.camera.speed = 0.003;
-                    quad.draw(0.0, 0.0, SCR_WIDTH as f32, SCR_HEIGHT as f32, 0.7);
+                    water_tint_quad.draw(0.0, 0.0, SCR_WIDTH as f32, SCR_HEIGHT as f32, 0.7);
                 } else {
-                    player.camera.speed = 0.008;
+                    if player.camera.speed < 0.008 {
+                        player.camera.speed = 0.008;
+                    }
                 }
+            },
+            WindowMode::InServer => {
+                // assume server connection must be Some
+                let connection = server_connection.as_mut().unwrap();
+                let server_world = server_world.clone().unwrap();
+
+                for (_, event) in glfw::flush_messages(&events) {
+                    match event {
+                        WindowEvent::FramebufferSize(width, height) => {
+                            gl::Viewport(0, 0, width, height);
+                        },
+                        WindowEvent::Scroll(_, y_offset) => {
+                            player.camera.scroll_callback(y_offset as f32);
+                        },
+                        WindowEvent::CursorPos(xpos, ypos) => {
+                            let (x_pos, y_pos) = (xpos as f32, ypos as f32);
+                            let x_offset = x_pos - last_x;
+                            let y_offset = last_y - y_pos;
+                            last_x = x_pos;
+                            last_y = y_pos;
+            
+                            if mouse_captured {
+                                player.camera.mouse_callback(x_offset, y_offset);
+                            }
+                        },
+                        WindowEvent::MouseButton(MouseButton::Button1, Action::Press, _) => {
+                            if let Some(((x, y, z), _)) = selected_coords {
+                                connection.send_message(RustyCraftMessage::SetBlock { world_x: x, world_y: y, world_z: z, block: BlockType::Air })
+                                    .expect("Failed to send SetBlock packets");
+                            }
+                        },
+                        WindowEvent::MouseButton(MouseButton::Button2, Action::Press, _) => {
+                            if let Some(((x, y, z), Some(face))) = selected_coords {
+                                let place_position = get_block_on_face(x, y, z, &face);
+                                if can_place_block_at_loc(player.camera.position, place_position.0, place_position.1, place_position.2) {
+                                    let block = index_to_block(current_block_index);
+                                    connection.send_message(RustyCraftMessage::SetBlock { world_x: place_position.0, world_y: place_position.1, world_z: place_position.2, block })
+                                        .expect("Failed to send SetBlock packets");
+                                }
+                            }
+                        }, 
+                        WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
+                            window_mode = WindowMode::Title;
+                            window.set_cursor_mode(CursorMode::Normal);
+                            connection.send_message(RustyCraftMessage::Disconnect)
+                                .expect("Failed to send disconnect message");
+                        },
+                        WindowEvent::Key(Key::LeftSuper, _, Action::Press, _) => {
+                            println!("Toggling window focus");
+                            mouse_captured = !mouse_captured;
+                            window.set_cursor_mode(match mouse_captured {
+                                true => CursorMode::Disabled,
+                                false => CursorMode::Normal
+                            });
+                        },
+                        WindowEvent::Key(Key::Up, _, Action::Press, _) => current_block_index += 1,
+                        WindowEvent::Key(Key::Down, _, Action::Press, _) => if current_block_index > 0 { current_block_index -= 1 },
+                        WindowEvent::Key(Key::Space, _, Action::Press, _) => player.jump(),
+                        WindowEvent::Key(Key::LeftShift, _, Action::Press, _) => player.camera.speed = 0.05,
+                        WindowEvent::Key(Key::LeftShift, _, Action::Release, _) => player.camera.speed = 0.008,
+                        WindowEvent::Key(key, _, action, _) => player.camera.process_keyboard(key, action),
+                        _ => ()
+                    }
+                }
+
+                // continue if window mode was changed
+                if window_mode == WindowMode::Title {
+                    continue;
+                }
+                let position = player.camera.position;
+
+                player.update_position(&*server_world.lock().unwrap(), deltatime);
+
+                // update player altitude
+                player.update_alt(&*server_world.lock().unwrap());
+
+                // draw text
+                text_renderer.render_text(format!("Connected to {}", connection.address).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 1.0, 1.0));
+                text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 60.0, 1.0, vec3(1.0, 1.0, 1.0));
+                text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 80.0, 0.6, vec3(1.0, 1.0, 1.0));
+                text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 100.0, 0.6, vec3(1.0, 1.0, 1.0));
+                text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 120.0, 0.6, vec3(1.0, 1.0, 1.0));
+                
+                let block = index_to_block(current_block_index); 
+                text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 130.0, 0.6, vec3(1.0, 1.0, 1.0));
+
+                // shader uniforms
+                shader.use_program();
+                // transforms
+                shader.set_mat4("view", player.camera.get_view());
+                shader.set_mat4("projection", player.camera.get_projection());
+                shader.set_mat4("model", Matrix4::<f32>::from_scale(1.0));
+
+                // bind texture
+                texture_map.bind();
+                shader.set_texture("texture_map", &texture_map);
+
+                // draw
+                vao.bind();
+                vbo.bind();
+
+                let x = position.x.round() as i32;
+                let z = position.z.round() as i32;
+ 
+                let mut server_world = server_world.lock().unwrap();
+                let meshes = server_world.get_world_mesh_from_perspective(x, z, force_recalculation);
+                force_recalculation = false;
+                // opaque block points
+                for mesh in meshes.iter() {
+                    vbo.set_data(&mesh.0, gl::DYNAMIC_DRAW);
+                    gl::DrawArrays(gl::POINTS, 0, (mesh.0.len() / 10) as GLint);
+                }
+                
+                // transparent block points
+                for mesh in meshes.iter() {
+                    vbo.set_data(&mesh.1, gl::DYNAMIC_DRAW);
+                    gl::DrawArrays(gl::POINTS, 0, (mesh.1.len() / 10) as GLint);
+                }
+
+                selected_coords = server_world.raymarch_block(&player.camera.position, &player.camera.front);
+                if let Some(((x, y, z), Some(face))) = selected_coords {
+                    draw_block_selector(x, y, z, face, &shader, &vbo);
+                } 
+
+                // couldn't get framebuffer to work for post-processing
+                // so draw a blue textured transparent quad for underwater
+                // effect now
+                if player.underwater(&*server_world) {
+                    player.camera.speed = 0.003;
+                    water_tint_quad.draw(0.0, 0.0, SCR_WIDTH as f32, SCR_HEIGHT as f32, 0.7);
+                } else {
+                    if player.camera.speed < 0.008 {
+                        player.camera.speed = 0.008;
+                    }
+                } 
             }
         }
         window.swap_buffers();
@@ -416,7 +600,7 @@ unsafe fn start() {
     }
 }
 
-fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::WindowEvent)>, mouse_captured: &mut bool, selected_coords: &Option<((i32, i32, i32), Option<Face>)>, world: &mut World, player: &mut Player, last_x: &mut f32, last_y: &mut f32, first_mouse: &mut bool, force_recalculation: &mut bool, current_block_index: &mut u32, window_mode: &mut WindowMode) {
+fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::WindowEvent)>, mouse_captured: &mut bool, selected_coords: &Option<((i32, i32, i32), Option<Face>)>, world: &mut World, player: &mut Player, last_x: &mut f32, last_y: &mut f32, first_mouse: &mut bool, force_recalculation: &mut bool, current_block_index: &mut usize, window_mode: &mut WindowMode) {
     for (_, event) in glfw::flush_messages(events) {
         match event {
             WindowEvent::FramebufferSize(width, height) => {
@@ -466,35 +650,14 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                     let y = *y;
                     let z = *z;
                     
-                    let place_position = match face {
-                        Face::Top => (x, y + 1, z),
-                        Face::Bottom => (x, y - 1, z),
-                        Face::Right => (x + 1, y, z),
-                        Face::Left => (x - 1, y, z),
-                        Face::Front => (x, y, z - 1),
-                        Face::Back => (x, y, z + 1),
-                    };
-                    let block = match current_block_index {
-                        0 => BlockType::Dirt,
-                        1 => BlockType::Grass,
-                        2 => BlockType::Stone,
-                        3 => BlockType::Log,
-                        4 => BlockType::Leaves,
-                        5 => BlockType::Orange,
-                        6 => BlockType::DarkOrange,
-                        7 => BlockType::Black,
-                        _ => BlockType::Air
-                    };
+                    let place_position = get_block_on_face(x, y, z, face);
+                    let block = index_to_block(*current_block_index);
 
-                    if place_position.0 == player.camera.position.x.round() as i32
-                        && (place_position.1 == player.camera.position.y.round() as i32
-                        || place_position.1 == player.camera.position.y.round() as i32 - 1)
-                        && place_position.2 == player.camera.position.z.round() as i32 {
-                            return;
-                        }
+                    if !can_place_block_at_loc(player.camera.position, place_position.0, place_position.1, place_position.2) {
+                        return;
+                    }
                     world.set_block(place_position.0, place_position.1, place_position.2, block);
                     *force_recalculation = true;
-                    //world.recalculate_mesh_from_perspective((camera.position.x as i32) % 16, (camera.position.z as i32) % 16);
                 }
             }, 
             WindowEvent::Key(Key::Space, _, Action::Press, _) => player.jump(),
@@ -503,21 +666,63 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
             WindowEvent::Key(Key::LeftShift, _, Action::Press, _) => player.camera.speed = 0.05,
             WindowEvent::Key(Key::LeftShift, _, Action::Release, _) => player.camera.speed = 0.008,
             WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
+                *current_block_index = 0;
                 *window_mode = WindowMode::Title;
                 window.set_cursor_mode(CursorMode::Normal);
+                fs::write(format!("{}/player_pos", world.save_dir).as_str(), format!("{} {} {}", player.camera.position.x, player.camera.position.y, player.camera.position.z))
+                    .expect("Failed to write player position to file");
             },
             WindowEvent::Key(Key::LeftSuper, _, Action::Press, _) => {
-                println!("Toggling window focus");
                 *mouse_captured = !*mouse_captured;
                 window.set_cursor_mode(match *mouse_captured {
                     true => CursorMode::Disabled,
                     false => CursorMode::Normal
                 });
             },
-            WindowEvent::Key(key, _, action, _) => {
-                player.camera.process_keyboard(key, action);
-            },
+            WindowEvent::Key(key, _, action, _) => player.camera.process_keyboard(key, action),
             _ => ()
         }
+    }
+}
+
+unsafe fn draw_block_selector(x: i32, y: i32, z: i32, face: Face, shader: &Shader, vbo: &VertexBuffer) {
+    let mut mesh = Vec::new();
+    mesh.push(x as f32);
+    mesh.push(y as f32);
+    mesh.push(z as f32);
+    for _ in 0..6 {
+        mesh.push(7.0);
+    };
+
+    let face_to_draw = match face {
+        Face::Front     => 0b10000000,
+        Face::Right     => 0b01000000,
+        Face::Back      => 0b00100000,
+        Face::Bottom    => 0b00010000,
+        Face::Left      => 0b00001000,
+        Face::Top       => 0b00000100,
+    };
+    mesh.push(face_to_draw as f32);
+    vbo.set_data(&mesh, gl::DYNAMIC_DRAW);
+
+    shader.set_mat4("model", Matrix4::from_scale(1.01));
+    gl::DrawArrays(gl::POINTS, 0, 1);
+}
+
+fn can_place_block_at_loc(player_position: Vector3<f32>, x: i32, y: i32, z: i32) -> bool {
+    x != player_position.x.round() as i32
+        || (y != player_position.y.round() as i32
+        && y != player_position.y.round() as i32 - 1)
+        || z != player_position.z.round() as i32
+}
+
+fn get_block_on_face(x: i32, y: i32, z: i32, face: &Face) -> (i32, i32, i32) {
+    match face {
+        Face::Top => (x, y + 1, z),
+        Face::Bottom => (x, y - 1, z),
+        Face::Right => (x + 1, y, z),
+        Face::Left => (x - 1, y, z),
+        Face::Front => (x, y, z - 1),
+        Face::Back => (x, y, z + 1),
     }
 }
