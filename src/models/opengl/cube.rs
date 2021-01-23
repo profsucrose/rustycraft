@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::ptr;
 
 use cgmath::{Matrix4, Vector3};
@@ -6,14 +7,14 @@ use crate::models::opengl::camera::Camera;
 
 use super::{element_buffer::ElementBuffer, shader::Shader, vertex_array::VertexArray, vertex_buffer::VertexBuffer};
 
-pub struct PlayerModel {
+pub struct Cube {
     vao: VertexArray,
     vbo: VertexBuffer,
     shader: Shader
 }
 
-impl PlayerModel {
-    pub unsafe fn new() -> PlayerModel {
+impl Cube {
+    pub unsafe fn new() -> Cube {
         let vao = VertexArray::new();
         vao.bind();
 
@@ -74,12 +75,12 @@ impl PlayerModel {
         VertexBuffer::unbind();
 
         let shader = Shader::new("assets/shaders/player/player_vertex.vert", "assets/shaders/player/player_fragment.frag");
-        PlayerModel { vao, vbo, shader }
+        Cube { vao, vbo, shader }
     }
 
-    pub unsafe fn draw(&self, camera: &Camera, x: f32, y: f32, z: f32) {
+    pub unsafe fn draw(&self, camera: &Camera, model: Matrix4<f32>) {
         self.shader.use_program();
-        self.shader.set_mat4("model", Matrix4::from_translation(Vector3::new(x, y, z)));
+        self.shader.set_mat4("model", model);
         self.shader.set_mat4("view", camera.get_view());
         self.shader.set_mat4("projection", camera.get_projection());
 

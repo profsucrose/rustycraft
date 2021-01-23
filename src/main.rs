@@ -2,13 +2,13 @@
 mod models;      
 
 use std::{ffi::c_void, fs, mem, path::Path, ptr, sync::{Arc, Mutex, mpsc::Receiver}, time::Instant};
-use cgmath::{Deg, Matrix3, Matrix4, Vector3, vec3};
+use cgmath::{Deg, Matrix3, Matrix4, Point3, Vector3, vec3};
 use glfw::{Action, Context, CursorMode, Key, MouseButton, PixelImage, WindowEvent};
 use gl::types::*;
 use image::{RgbaImage, GenericImage};
 use models::{core::{block_type::index_to_block, player::Player}, opengl::{tex_quad::TexQuad}};
 
-use crate::models::{core::{block_type::BlockType, face::Face, window_mode::WindowMode, world::World}, multiplayer::{rc_message::RustyCraftMessage, server_connection::ServerConnection, server_world::ServerWorld}, opengl::{button::Button, camera::Camera, framebuffer::FrameBuffer, input::Input, player_model::PlayerModel, shader::Shader, text_renderer::TextRenderer, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}, traits::game_world::GameWorld};
+use crate::models::{core::{block_type::BlockType, face::Face, window_mode::WindowMode, world::World}, multiplayer::{rc_message::RustyCraftMessage, server_connection::ServerConnection, server_state::ServerState, server_world::ServerWorld}, opengl::{button::Button, camera::Camera, depth_framebuffer::{DepthFrameBuffer, SHADOW_HEIGHT, SHADOW_WIDTH}, framebuffer::FrameBuffer, input::Input, shader::Shader, text_renderer::{TextJustification, TextRenderer}, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}, traits::game_world::GameWorld, utils::name_utils::gen_name};
 
 // settings
 const SCR_WIDTH: u32 = 1000;
@@ -71,6 +71,7 @@ unsafe fn start() {
     gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
 
     let shader = Shader::new_with_geom("assets/shaders/voxal/vertex.vert", "assets/shaders/voxal/fragment.frag", "assets/shaders/voxal/geometry.geom");
+    let depth_shader = Shader::new("assets/shaders/depth_map/depth_vertex.vert", "assets/shaders/depth_map/depth_fragment.frag");
 
     // create vertex array
     let vao = VertexArray::new(); 
@@ -140,13 +141,15 @@ unsafe fn start() {
     let button_x = SCR_WIDTH as f32 / 2.0;
     let select_worlds_button = Button::new("Open World", button_x, 280.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
     let open_world_button = Button::new("Open", button_x, 210.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
-    let connect_button = Button::new("Connect", button_x, 210.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
-    let back_button = Button::new("Back", button_x, 140.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
+    let connect_button = Button::new("Connect", button_x, 140.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
+    let mut back_button = Button::new("Back", button_x, 60.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
     let connect_to_server_button = Button::new("Connect to Server", button_x, 210.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
-    
+
     // inputs
-    let mut open_world_input = Input::new(button_x, 280.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
-    let mut connect_to_server_input = Input::new(button_x, 280.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT);
+    let mut open_world_input = Input::new(button_x, 280.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT, 1.0, TextJustification::Center);
+    let mut connect_to_server_input = Input::new(button_x, 210.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT, 1.0, TextJustification::Center);
+    let mut server_player_name_input = Input::new(button_x, 280.0, button_width, button_height, SCR_WIDTH, SCR_HEIGHT, 1.0, TextJustification::Center);
+    let mut chat_input = Input::new(SCR_WIDTH as f32 / 2.0, 30.0, SCR_WIDTH as f32 + 30.0, button_height / 1.3, SCR_WIDTH, SCR_HEIGHT, 0.8, TextJustification::Left);
 
     let last_world = fs::read_to_string("game_data/last_world");
     if last_world.is_ok() {
@@ -158,24 +161,42 @@ unsafe fn start() {
         connect_to_server_input.text = last_server.unwrap();
     }
 
+    let player_name = fs::read_to_string("game_data/player_name");
+    if player_name.is_ok() {
+        server_player_name_input.text = player_name.unwrap();
+    } else {
+        server_player_name_input.text = gen_name();
+    }
+
     // window
-    let mut window_mode = WindowMode::ConnectToServer;
+    let mut window_mode = WindowMode::Title;
 
     // placeholder world object
     let mut world = None;
     let mut server_connection = None;
-    let mut server_world = None;
+    let mut server_state = None;
     let mut did_just_fail_to_connect = false;
     let mut shift_pressed = false;
+    let mut time = 0.01;
+    let mut server_chat_opened = false;
+
+    //let framebuffer = FrameBuffer::new(SCR_WIDTH, SCR_HEIGHT);
+    let depth_framebuffer = DepthFrameBuffer::new();
 
     // render loop
     while !window.should_close() {
         let deltatime = instant.elapsed().as_millis() as f32;
         instant = Instant::now();
+        time += 0.01;
+
+        // bind framebuffer
+        //framebuffer.bind();
 
         // clear buffers
         gl::ClearColor(29.0 / 255.0, 104.0 / 255.0, 224.0 / 255.0, 1.0);
+        //gl::ClearColor(0.0 / 255.0, 0.0 / 255.0, 0.0 / 255.0, 1.0);
         gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); 
+        gl::Enable(gl::DEPTH_TEST);
         match window_mode {
             WindowMode::Title | WindowMode::OpenWorld | WindowMode::ConnectToServer => {
                 for (_, event) in glfw::flush_messages(&events) {
@@ -206,9 +227,8 @@ unsafe fn start() {
                                     }
 
                                     if open_world_button.is_hovered(last_x, last_y) {
-                                        let mut world_object = World::new(30, open_world_input.text.clone().as_str());
+                                        let mut world_object = World::new(10, open_world_input.text.clone().as_str());
                                         world_object.recalculate_mesh_from_perspective(0, 0);
-                                        
                                         let last_player_pos = fs::read_to_string(format!("game_data/worlds/{}/player_pos", open_world_input.text.clone().as_str()));
                                         if let Ok(player_pos_str) = last_player_pos {
                                             let words: Vec<&str> = player_pos_str.split(" ").collect();
@@ -241,6 +261,7 @@ unsafe fn start() {
                                 },
                                 WindowMode::ConnectToServer => {
                                     connect_to_server_input.update_focus(last_x, last_y);
+                                    server_player_name_input.update_focus(last_x, last_y);
                                     if connect_button.is_hovered(last_x, last_y) {
                                         let address = connect_to_server_input.text.clone();
                                         let connection = ServerConnection::new(address.clone());
@@ -252,12 +273,16 @@ unsafe fn start() {
                                                 let mut world = ServerWorld::new(SERVER_RENDER_DISTANCE, connection.clone());
                                                 world.recalculate_mesh_from_perspective(0, 0);
                                                 let world = Arc::new(Mutex::new(world));
-                                                server_world = Some(world.clone());
-                                                connection.clone().create_listen_thread(world.clone());
+                                                server_state = Some(ServerState::new(world.clone()));
+                                                connection.clone().send_message(RustyCraftMessage::SetName { name: String::from(server_player_name_input.text.clone()) })
+                                                    .expect("Failed to set name on join");
+                                                connection.clone().create_listen_thread(server_state.clone().unwrap());
                                                 server_connection = Some(connection.clone());
                                                 window.set_cursor_mode(CursorMode::Disabled);
                                                 window_mode = WindowMode::InServer;
                                                 fs::write("game_data/last_server", address.clone())
+                                                    .expect("Failed to write world input text to file");
+                                                fs::write("game_data/player_name", server_player_name_input.text.clone())
                                                     .expect("Failed to write world input text to file");
                                                 did_just_fail_to_connect = false;
                                                 current_block_index = 0;
@@ -279,10 +304,11 @@ unsafe fn start() {
                         WindowEvent::Key(key, _, Action::Press, _) => {
                             match window_mode {
                                 WindowMode::OpenWorld => {
-                                    open_world_input.type_key(key, shift_pressed);
+                                    open_world_input.type_key(key, shift_pressed, &text_renderer);
                                 },
                                 WindowMode::ConnectToServer => {
-                                    connect_to_server_input.type_key(key, shift_pressed);
+                                    connect_to_server_input.type_key(key, shift_pressed, &text_renderer);
+                                    server_player_name_input.type_key(key, shift_pressed, &text_renderer);
                                 },
                                 _ => ()
                             }
@@ -301,18 +327,26 @@ unsafe fn start() {
     
                 yellow_text_size += 0.075;
                 
+                // first render to depth map
+                gl::Viewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+                depth_framebuffer.bind();
+                gl::Clear(gl::DEPTH_BUFFER_BIT);
+
+                // RENDER
+                // ------
                 // shader uniforms
-                shader.use_program();
+                depth_shader.use_program();
                 // transforms
-                shader.set_mat4("view", menu_camera.get_view());
-                shader.set_mat4("projection", menu_camera.get_projection());
-                shader.set_mat4("model", Matrix4::<f32>::from_scale(1.0));
-    
-                menu_camera.mouse_callback(0.15, 0.0);
-    
-                // bind texture
-                texture_map.bind();
-                shader.set_texture("texture_map", &texture_map);
+                // use different projection for light
+                //-0.8, -1.0, 0.0
+                let light_projection = cgmath::ortho(-10.0, 10.0, -10.0, 10.0, 1.0, 7.5);
+                let light_view = Matrix4::look_at(
+                    Point3::new(0.8, 1.0, 0.0),
+                    Point3::new(0.0, 0.0, 0.0),
+                    Vector3::new(0.0, 1.0, 0.0)
+                );
+                let light_space_matrix = light_projection * light_view;
+                depth_shader.set_mat4("light_space_matrix", light_space_matrix);
     
                 // draw
                 vao.bind();
@@ -330,16 +364,64 @@ unsafe fn start() {
                     vbo.set_data(&mesh.1, gl::DYNAMIC_DRAW);
                     gl::DrawArrays(gl::POINTS, 0, (mesh.1.len() / 10) as GLint);
                 }
+
+                // unbind depth framebuffer
+                DepthFrameBuffer::unbind();
+
+                // reset viewport
+                gl::Viewport(0, 0, SCR_WIDTH as GLint * 2, SCR_HEIGHT as GLint * 2);
+                // ------
+
+                // SECOND RENDER
+                // -------
+                gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+
+                // shader uniforms
+                shader.use_program();
+                shader.set_mat4("light_space_matrix", light_space_matrix);
+                shader.set_mat4("view", menu_camera.get_view());
+                shader.set_mat4("projection", menu_camera.get_projection());
+                shader.set_mat4("model", Matrix4::<f32>::from_scale(1.0));
+                shader.set_vec3("light_pos", Vector3::new(menu_camera.position.x, menu_camera.position.y - 2.0, menu_camera.position.z));
+                shader.set_vec3("view_pos", menu_camera.position);
+                shader.set_float("time", time);
+
+                menu_camera.mouse_callback(0.15, 0.0);
     
+                // bind texture
+                texture_map.bind();
+                shader.set_uint("texture_map", 0);
+                
+                gl::ActiveTexture(gl::TEXTURE1);
+                gl::BindTexture(gl::TEXTURE_2D, depth_framebuffer.depth_map);
+                shader.set_uint("depth_map", 1);
+    
+                // draw
+                vao.bind();
+                vbo.bind();
+    
+                let meshes = menu_world.get_world_mesh_from_perspective(0, 0, false);
+                // opaque block points
+                for mesh in meshes.iter() {
+                    vbo.set_data(&mesh.0, gl::DYNAMIC_DRAW);
+                    gl::DrawArrays(gl::POINTS, 0, (mesh.0.len() / 10) as GLint);
+                }
+    
+                // transparent block points
+                for mesh in meshes.iter() {
+                    vbo.set_data(&mesh.1, gl::DYNAMIC_DRAW);
+                    gl::DrawArrays(gl::POINTS, 0, (mesh.1.len() / 10) as GLint);
+                }
+
                 // text
                 let x = (SCR_WIDTH / 2) as f32;
                 let y = SCR_HEIGHT as f32 - 220.0;
                 let subtitle_size = 0.9 + (yellow_text_size.sin() + 1.0) / 30.0;
-                text_renderer.render_text_with_mat("Shitty Minecraft -- in Rust!", 900.0 - subtitle_size * 100.0, y - 130.0, subtitle_size, Vector3::new(1.0, 1.0, 0.0), Matrix4::<f32>::from_angle_z(Deg(10.0)), true);
-                text_renderer.render_text_centered("RustyCraft", x, y, 3.5, Vector3::new(1.0, 0.0, 0.0));
-                text_renderer.render_text_centered("RustyCraft", x + 3.0, y - 3.0, 3.5, Vector3::new(173.0 / 255.0, 24.0 / 255.0, 24.0 / 255.0));
-                text_renderer.render_text("v0.1", SCR_WIDTH as f32 - 55.0, 10.0, 0.9, Vector3::new(1.0, 1.0, 1.0));
-   
+                text_renderer.render_text_with_mat("Shitty Minecraft -- in Rust!", 900.0 - subtitle_size * 100.0, y - 130.0, subtitle_size, Vector3::new(1.0, 1.0, 0.0), Matrix4::<f32>::from_angle_z(Deg(10.0)), TextJustification::Center);
+                text_renderer.render_text("RustyCraft", x, y, 3.5, Vector3::new(1.0, 0.0, 0.0), TextJustification::Center);
+                text_renderer.render_text("RustyCraft", x + 3.0, y - 3.0, 3.5, Vector3::new(173.0 / 255.0, 24.0 / 255.0, 24.0 / 255.0), TextJustification::Center);
+                text_renderer.render_text("v0.1", SCR_WIDTH as f32 - 55.0, 10.0, 0.9, Vector3::new(1.0, 1.0, 1.0), TextJustification::Center);
+
                 let last_y = SCR_HEIGHT as f32 - last_y;
                 match window_mode {
                     WindowMode::Title => {
@@ -347,22 +429,23 @@ unsafe fn start() {
                         connect_to_server_button.draw(&text_renderer, last_x, last_y);
                     },
                     WindowMode::OpenWorld => {
+                        back_button.set_y(140.0);
                         open_world_button.draw(&text_renderer, last_x, last_y);
                         open_world_input.draw(&text_renderer);
                         back_button.draw(&text_renderer, last_x, last_y);
                     },
                     WindowMode::ConnectToServer => {
+                        back_button.set_y(70.0);
                         connect_button.draw(&text_renderer, last_x, last_y);
                         connect_to_server_input.draw(&text_renderer);
+                        server_player_name_input.draw(&text_renderer);
                         back_button.draw(&text_renderer, last_x, last_y);
                         if did_just_fail_to_connect {
-                            text_renderer.render_text("Failed to Connect", button_x - 210.0, 310.0, 1.0, Vector3::new(1.0, 1.0, 1.0));
+                            text_renderer.render_text("Failed to Connect", button_x - 210.0, 310.0, 1.0, Vector3::new(1.0, 1.0, 1.0), TextJustification::Center);
                         }
                     },
                     _ => panic!("Attempted to display window mode that was not a title menu")
                 };
-                
-                open_world_input.draw(&text_renderer);
             },
             WindowMode::InWorld => {
                 let mut world = world.as_mut().unwrap();
@@ -388,13 +471,15 @@ unsafe fn start() {
                 // update player altitude
                 player.update_alt(world);
 
+                player.draw_model();
+
                 // draw text
-                text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 1.0, 1.0));
-                text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, vec3(1.0, 1.0, 1.0));
-                text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, vec3(1.0, 1.0, 1.0));
-                text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 1.0, 1.0));
+                text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
                 let block = index_to_block(current_block_index); 
-                text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 110.0, 0.6, vec3(1.0, 1.0, 1.0));
+                text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 110.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
 
                 // draw players
                 // let position = &player.camera.position;
@@ -416,6 +501,8 @@ unsafe fn start() {
                 shader.set_mat4("view", player.camera.get_view());
                 shader.set_mat4("projection", player.camera.get_projection());
                 shader.set_mat4("model", Matrix4::<f32>::from_scale(1.0));
+                shader.set_vec3("light_pos", player.camera.position);
+                shader.set_float("time", time);
 
                 // bind texture
                 texture_map.bind();
@@ -459,7 +546,8 @@ unsafe fn start() {
             WindowMode::InServer => {
                 // assume server connection must be Some
                 let connection = server_connection.as_mut().unwrap();
-                let server_world = server_world.clone().unwrap();
+                let state = server_state.clone().unwrap();
+                let server_world = state.world;
 
                 for (_, event) in glfw::flush_messages(&events) {
                     match event {
@@ -481,26 +569,59 @@ unsafe fn start() {
                             }
                         },
                         WindowEvent::MouseButton(MouseButton::Button1, Action::Press, _) => {
-                            if let Some(((x, y, z), _)) = selected_coords {
-                                connection.send_message(RustyCraftMessage::SetBlock { world_x: x, world_y: y, world_z: z, block: BlockType::Air })
-                                    .expect("Failed to send SetBlock packets");
+                            if mouse_captured {
+                                if let Some(((x, y, z), _)) = selected_coords {
+                                    connection.send_message(RustyCraftMessage::SetBlock { world_x: x, world_y: y, world_z: z, block: BlockType::Air })
+                                        .expect("Failed to send SetBlock packets");
+                                }
                             }
                         },
                         WindowEvent::MouseButton(MouseButton::Button2, Action::Press, _) => {
-                            if let Some(((x, y, z), Some(face))) = selected_coords {
-                                let place_position = get_block_on_face(x, y, z, &face);
-                                if can_place_block_at_loc(player.camera.position, place_position.0, place_position.1, place_position.2) {
-                                    let block = index_to_block(current_block_index);
-                                    connection.send_message(RustyCraftMessage::SetBlock { world_x: place_position.0, world_y: place_position.1, world_z: place_position.2, block })
-                                        .expect("Failed to send SetBlock packets");
+                            if mouse_captured {
+                                if let Some(((x, y, z), Some(face))) = selected_coords {
+                                    let place_position = get_block_on_face(x, y, z, &face);
+                                    if can_place_block_at_loc(player.camera.position, place_position.0, place_position.1, place_position.2) {
+                                        let block = index_to_block(current_block_index);
+                                        connection.send_message(RustyCraftMessage::SetBlock { world_x: place_position.0, world_y: place_position.1, world_z: place_position.2, block })
+                                            .expect("Failed to send SetBlock packets");
+                                    }
                                 }
                             }
                         }, 
                         WindowEvent::Key(Key::Escape, _, Action::Press, _) => {
-                            window_mode = WindowMode::Title;
+                            if server_chat_opened {
+                                server_chat_opened = false;
+                                shift_pressed = false;
+                                mouse_captured = true;
+                                window.set_cursor_mode(CursorMode::Disabled);
+                                chat_input.set_focus(false);
+                            } else {
+                                window_mode = WindowMode::Title;
+                                window.set_cursor_mode(CursorMode::Normal);
+                                connection.send_message(RustyCraftMessage::Disconnect)
+                                    .expect("Failed to send disconnect message");
+                            }
+                        },
+                        WindowEvent::Key(Key::LeftShift, _, Action::Press, _) if server_chat_opened => shift_pressed = true,
+                        WindowEvent::Key(Key::LeftShift, _, Action::Release, _) if server_chat_opened => shift_pressed = false,
+                        WindowEvent::Key(Key::Enter, _, Action::Press, _) if server_chat_opened => {
+                            connection.send_message(RustyCraftMessage::ChatMessage { content: chat_input.text.clone() })
+                                .expect("Failed to send chat message");
+                            chat_input.text = String::new();
+                            shift_pressed = false;
+                            server_chat_opened = false;
+                            window.set_cursor_mode(CursorMode::Disabled);
+                            mouse_captured = true;
+                        },
+                        WindowEvent::Key(key, _, Action::Press, _) if server_chat_opened => {
+                            println!("Typed in chat input");
+                            chat_input.type_key(key, shift_pressed, &text_renderer);
+                        },
+                        WindowEvent::Key(Key::T, _, Action::Press, _) => {
+                            mouse_captured = false;
+                            server_chat_opened = true;
                             window.set_cursor_mode(CursorMode::Normal);
-                            connection.send_message(RustyCraftMessage::Disconnect)
-                                .expect("Failed to send disconnect message");
+                            chat_input.set_focus(true);
                         },
                         WindowEvent::Key(Key::LeftSuper, _, Action::Press, _) => {
                             println!("Toggling window focus");
@@ -532,14 +653,25 @@ unsafe fn start() {
                 player.update_alt(&*server_world.lock().unwrap());
 
                 // draw text
-                text_renderer.render_text(format!("Connected to {}", connection.address).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 1.0, 1.0));
-                text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 60.0, 1.0, vec3(1.0, 1.0, 1.0));
-                text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 80.0, 0.6, vec3(1.0, 1.0, 1.0));
-                text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 100.0, 0.6, vec3(1.0, 1.0, 1.0));
-                text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 120.0, 0.6, vec3(1.0, 1.0, 1.0));
+                text_renderer.render_text(format!("Connected to {}", connection.address).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 60.0, 1.0, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 80.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 100.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 120.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
                 
                 let block = index_to_block(current_block_index); 
-                text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 130.0, 0.6, vec3(1.0, 1.0, 1.0));
+                text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 130.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+
+                // chat
+                let chat = state.chat_stack.lock().unwrap();
+                for i in 0..chat.len().min(10) {
+                    let message = chat[chat.len() - 1 - i].as_str();
+                    text_renderer.render_text(message, 10.0, (i as f32) * 20.0 + 60.0, 0.65, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
+                }
+
+                if server_chat_opened {
+                    chat_input.draw(&text_renderer);
+                }
 
                 // shader uniforms
                 shader.use_program();
@@ -592,6 +724,13 @@ unsafe fn start() {
                 } 
             }
         }
+        
+        // second pass, draw framebuffer quad
+        // FrameBuffer::unbind();
+        // gl::ClearColor(1.0, 1.0, 1.0, 1.0);
+        // gl::Clear(gl::COLOR_BUFFER_BIT);
+        // framebuffer.draw();
+
         window.swap_buffers();
         glfw.poll_events();
 

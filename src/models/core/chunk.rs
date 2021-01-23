@@ -4,7 +4,7 @@ use noise::{NoiseFn, OpenSimplex};
 
 use rand::prelude::*;
 
-use crate::models::{core::block_type::index_to_block, traits::game_chunk::GameChunk};
+use crate::models::{core::block_type::index_to_block, traits::game_chunk::GameChunk, utils::chunk_utils::{from_serialized, to_serialized}};
 
 use super::{block_map::BlockMap, block_type::{BlockType, block_to_uv}, face::Face, world::World};
 
@@ -13,8 +13,8 @@ pub const CHUNK_HEIGHT: usize = 256;
 
 #[derive(Clone)]
 pub struct Chunk {
-    blocks: BlockMap,
-    blocks_in_mesh: Vec<(usize, usize, usize)>,
+    pub blocks: BlockMap,
+    pub blocks_in_mesh: Vec<(usize, usize, usize)>,
     x: i32,
     z: i32,
     save_path: String,
@@ -29,21 +29,7 @@ impl GameChunk for Chunk {
 
 impl Chunk {
     pub fn from(save_path: String, contents: String, x: i32, z: i32) -> Chunk {
-        // follows format
-        // [x] [y] [z] [block_index]
-        // [x1] [y1] [z1] [block_index1]
-        // ...
-        let mut blocks = BlockMap::new();
-        let mut blocks_in_mesh = vec![];
-        for lines in contents.lines() {
-            let words: Vec<&str> = lines.split(" ").collect();
-            let x = words[0].parse::<usize>().unwrap();
-            let y = words[1].parse::<usize>().unwrap();
-            let z = words[2].parse::<usize>().unwrap();
-            let block_index = words[3].parse::<usize>().unwrap();
-            blocks.set(x, y, z, index_to_block(block_index));
-            blocks_in_mesh.push((x, y, z));
-        }
+        let  (blocks_in_mesh, blocks) = from_serialized(&contents); 
         Chunk { blocks, blocks_in_mesh, x: x * 16, z: z * 16, save_path, mesh: Rc::new((vec![], vec![])) }
     }
 
@@ -209,11 +195,7 @@ impl Chunk {
     }
 
     fn save(&self) {
-        let mut string = String::new();
-        for (x, y, z) in self.blocks_in_mesh.iter() {
-            string.push_str(format!("{} {} {} {}\n", *x, *y, *z, self.blocks.get(*x, *y, *z) as usize).as_str())
-        }
-        fs::write(self.save_path.clone(), string)
+        fs::write(self.save_path.clone(), to_serialized(&self.blocks_in_mesh, &self.blocks))
             .expect(format!("Failed to save chunk to {}", self.save_path.clone()).as_str());
     }
 
@@ -271,14 +253,6 @@ impl Chunk {
 
         let block_spot = self.blocks.get(x as usize, y as usize, z as usize);
         block_spot == BlockType::Air || (block_spot == BlockType::Water && block != BlockType::Water)
-    }
-    
-    pub fn highest_in_column(&self, x: usize, z: usize) -> usize {
-        self.blocks.highest_in_column(x, z)
-    }
-
-    pub fn highest_in_column_from_y(&self, x: usize, y: usize, z: usize) -> usize {
-        self.blocks.highest_in_column_from_y(x, y, z)
     }
 }
 

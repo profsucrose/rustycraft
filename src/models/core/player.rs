@@ -1,6 +1,6 @@
-use cgmath::Vector3;
+use cgmath::{Matrix4, Vector3};
 
-use crate::models::{core::block_type::BlockType, opengl::camera::Camera, traits::game_world::GameWorld};
+use crate::models::{core::block_type::BlockType, opengl::{camera::Camera, cube::Cube}, traits::game_world::GameWorld};
 
 use super::world::World;
 
@@ -10,13 +10,23 @@ const TERMINAL_VEL: f32 = -0.6;
 pub struct Player {
     pub camera: Camera,
     is_jumping: bool,
-    velocity_y: f32
+    velocity_y: f32,
+    model: Cube
 }
 
 impl Player {
-    pub fn new(screen_width: u32, screen_height: u32) -> Player {
+    pub unsafe fn new(screen_width: u32, screen_height: u32) -> Player {
         let camera = Camera::new(screen_width, screen_height, 0.008);
-        Player { camera, is_jumping: false, velocity_y: TERMINAL_VEL }
+        Player { camera, is_jumping: false, velocity_y: TERMINAL_VEL, model: Cube::new() }
+    }
+
+    pub unsafe fn draw_model(&mut self) {
+        let position = self.camera.position;
+        self.model.draw(
+            &self.camera, 
+            Matrix4::<f32>::from_translation(Vector3::new(position.x + 4.0, position.y - 0.51, position.z)) 
+                * Matrix4::from_nonuniform_scale(1.0, 2.0, 1.0)
+        );
     }
 
     pub fn update_position(&mut self, world: &impl GameWorld, deltatime: f32) {

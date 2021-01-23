@@ -1,10 +1,11 @@
+#![allow(dead_code)]
 use std::{fs, rc::Rc, sync::Arc};
 
 use noise::{NoiseFn, OpenSimplex};
 
 use rand::prelude::*;
 
-use crate::models::{core::{block_map::BlockMap, block_type::{BlockType, block_to_uv, index_to_block}, face::Face}, traits::game_chunk::GameChunk};
+use crate::models::{core::{block_map::BlockMap, block_type::{BlockType, block_to_uv, index_to_block}, face::Face}, traits::game_chunk::GameChunk, utils::chunk_utils::from_serialized};
 
 #[derive(Clone)]
 pub struct ServerChunk {
@@ -27,18 +28,7 @@ impl ServerChunk {
         // [x] [y] [z] [block_index] 
         // [x1] [y1] [z1] [block_index1] 
         // ...
-        let mut blocks = BlockMap::new();
-        let mut blocks_in_mesh = vec![];
-        for line in chunk_data.lines() {
-            let words: Vec<&str> = line.split(" ").collect();
-            let x = words[0].parse::<usize>().unwrap();
-            let y = words[1].parse::<usize>().unwrap();
-            let z = words[2].parse::<usize>().unwrap();
-            let block_index = words[3].parse::<usize>().unwrap(); 
-            blocks.set(x, y, z, index_to_block(block_index));
-            blocks_in_mesh.push((x, y, z));
-        }
-
+        let (blocks_in_mesh, blocks) = from_serialized(&chunk_data);
         ServerChunk { blocks, blocks_in_mesh, x: x * 16, z: z * 16, mesh: Arc::new((vec![], vec![])) }
     }
 

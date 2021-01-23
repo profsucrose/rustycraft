@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::{collections::HashMap, ffi::c_void, ptr};
 use cgmath::{InnerSpace, Matrix4, SquareMatrix, Vector2, Vector3, ortho, vec2};
 use freetype::Library;
@@ -6,6 +7,12 @@ use gl::types::*;
 use crate::models::opengl::camera::Camera;
 
 use super::shader::Shader;
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum TextJustification {
+    Left,
+    Center
+}
 
 pub struct Character {
     texture_id: u32, // glyph texture ID
@@ -156,12 +163,8 @@ impl TextRenderer {
         TextRenderer { char_cache, vao, vbo, vao3d, vbo3d, shader, shader3d, screen_width, screen_height }
     }
 
-    pub unsafe fn render_text(&self, text: &str, x: f32, y: f32, scale: f32, color: Vector3<f32>) {
-        self.render_text_with_mat(text, x, y, scale, color, Matrix4::<f32>::from_scale(1.0), false);
-    }
-
-    pub unsafe fn render_text_centered(&self, text: &str, x: f32, y: f32, scale: f32, color: Vector3<f32>) {
-        self.render_text_with_mat(text, x, y, scale, color, Matrix4::<f32>::from_scale(1.0), true);
+    pub unsafe fn render_text(&self, text: &str, x: f32, y: f32, scale: f32, color: Vector3<f32>, justification: TextJustification) {
+        self.render_text_with_mat(text, x, y, scale, color, SquareMatrix::identity(), justification);
     }
 
     pub fn get_char(&self, c: char) -> &Character {
@@ -177,40 +180,17 @@ impl TextRenderer {
         w
     }
 
-    pub unsafe fn render_text3d(&self, camera: &Camera, text: &str, mut x: f32, y: f32, z: f32, scale: f32, color: Vector3<f32>, centered: bool) {
+    pub unsafe fn render_text3d(&self, camera: &Camera, text: &str, mut x: f32, y: f32, z: f32, scale: f32, color: Vector3<f32>, justification: TextJustification) {
         self.shader3d.use_program();
         self.shader3d.set_mat4("view", camera.get_view());
         self.shader3d.set_mat4("projection", camera.get_projection());
         self.shader3d.set_vec3("textColor", color);
 
-        // calculate look at matrix for billboard text
-        // let delta: Vector3<f32> = target - Vector3::new(x, y, z);
-        // let direction = delta.normalize();
-
-        // let up = if direction.x.abs() < 0.00001 && direction.z.abs() < 0.00001 {
-        //     if direction.y > 0.0 {
-        //         Vector3::new(0.0, 0.0, -1.0) // if direction points in +y
-        //     } else {
-        //         Vector3::new(0.0, 0.0, 1.0) // if direction points in -y
-        //     }
-        // } else {
-        //     Vector3::new(0.0, 1.0, 0.0) // y-axis is world up
-        // };
-        // let up = up.normalize();
-        // let right = up.cross(direction).normalize();
-        // let up = direction.cross(right).normalize();
-        // let model = Matrix4::new(
-        //     right.x, right.y, right.z, 0.0,
-        //     up.x, up.y, up.z, 0.0,
-        //     direction.x, direction.y, direction.z, 0.0,
-        //     0.0, 0.0, 0.0, 1.0
-        // );
-
         self.shader3d.set_mat4("model", SquareMatrix::identity());
         gl::ActiveTexture(gl::TEXTURE0);
         gl::BindVertexArray(self.vao3d);
     
-        if centered {
+        if justification == TextJustification::Center {
             let w = self.calc_width(text, scale);
             x = x - w / 2.0;
         }
@@ -258,7 +238,7 @@ impl TextRenderer {
         gl::BindTexture(gl::TEXTURE_2D, 0);
     }
 
-    pub unsafe fn render_text_with_mat(&self, text: &str, mut x: f32, y: f32, scale: f32, color: Vector3<f32>, model: Matrix4<f32>, centered: bool) {
+    pub unsafe fn render_text_with_mat(&self, text: &str, mut x: f32, y: f32, scale: f32, color: Vector3<f32>, model: Matrix4<f32>, justification: TextJustification) {
         self.shader.use_program();
         self.shader.set_mat4("projection", ortho(0.0, self.screen_width as f32, 0.0, self.screen_height as f32, -1.0, 100.0));
         self.shader.set_vec3("textColor", color);
@@ -266,7 +246,7 @@ impl TextRenderer {
         gl::ActiveTexture(gl::TEXTURE0);
         gl::BindVertexArray(self.vao);
     
-        if centered {
+        if justification == TextJustification::Center {
             let w = self.calc_width(text, scale);
             x = x - w / 2.0;
         }

@@ -4,7 +4,7 @@ use serde_json::Result;
 
 use crate::models::multiplayer::{rc_message::RustyCraftMessage, server_world::ServerWorld};
 
-use super::event::RustyCraftEvent;
+use super::{event::RustyCraftEvent, server_state::ServerState};
 
 // struct that abstracts reading and writing to a server
 pub struct ServerConnection {
@@ -58,7 +58,7 @@ impl ServerConnection {
         }
     }
 
-    pub fn create_listen_thread(mut self, server_world: Arc<Mutex<ServerWorld>>) {
+    pub fn create_listen_thread(mut self, state: ServerState) {
         thread::spawn(move || {
             loop {
                 let result = self.read().unwrap();
@@ -73,18 +73,39 @@ impl ServerConnection {
 
                         match event.unwrap() {
                             RustyCraftEvent { sender: _, message: RustyCraftMessage::ChunkData { chunks } } => {
-                                let mut world = server_world.lock().unwrap();
-                                println!("Received {} chunks", chunks.len());
+                                let mut world = state.world.lock().unwrap();
                                 for (chunk_x, chunk_z, serialized_chunk) in chunks.into_iter() {
                                     world.insert_serialized_chunk(chunk_x, chunk_z, serialized_chunk);
                                 }
                             },
                             RustyCraftEvent { sender: _, message: RustyCraftMessage::SetBlock { world_x, world_y, world_z, block } } => {
-                                println!("{}", data);
-                                let mut server_world = server_world.lock().unwrap();
+                                let mut server_world = state.world.lock().unwrap();
                                 server_world.set_block(world_x, world_y, world_z, block);
                                 server_world.recalculate_mesh_from_player_perspective();
                             },
+                            // set name can only be done once after player joins, so use it to broadcast
+                            // join message
+                            RustyCraftEvent { sender, message: RustyCraftMessage::SetName { name } } => {
+                                state.player_names.lock().unwrap().insert(sender, name.clone());
+                                state.chat_stack.lock().unwrap().push(format!("{} joined the server", name));
+                            },
+                            RustyCraftEvent { sender, message: RustyCraftMessage::ChatMessage { content } } => {
+                                let message = match state.player_names.lock().unwrap().get(&sender) {
+                                    Some(name) => format!("<{}> {}", name, content),
+                                    None => format!("<Unnamed Player> {}", content)
+                                };
+                                state.chat_stack.lock().unwrap().push(message);
+                            },
+                            RustyCraftEvent { sender, message: RustyCraftMessage::Disconnect } => {
+                                let names = state.player_names.lock().unwrap();
+                                let name = names.get(&sender);
+                                // handle if peer never sent SetName packet
+                                let message = match name {
+                                    Some(name) => format!("{} left the server", name),
+                                    None => String::from("[Unnamed Player] left the server")
+                                };
+                                state.chat_stack.lock().unwrap().push(message);
+                            }
                             _ => ()
                         }
                     }

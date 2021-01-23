@@ -30,7 +30,7 @@ impl FrameBuffer {
         // allocates empty texture buffer so 
         // make GL calls directly instead of using 
         // abstracted class
-        gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGB as GLint, width as GLint, height as GLint, 0, gl::RGB, gl::UNSIGNED_BYTE, ptr::null());
+        gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGB as GLint, width as GLint * 2, height as GLint * 2, 0, gl::RGB, gl::UNSIGNED_BYTE, ptr::null());
 
         gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as GLint);
         gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as GLint);  
@@ -40,7 +40,7 @@ impl FrameBuffer {
         let mut rbo = 0;
         gl::GenRenderbuffers(1, &mut rbo);
         gl::BindRenderbuffer(gl::RENDERBUFFER, rbo);
-        gl::RenderbufferStorage(gl::RENDERBUFFER,  gl::DEPTH24_STENCIL8, width as GLint, height as GLint);
+        gl::RenderbufferStorage(gl::RENDERBUFFER,  gl::DEPTH24_STENCIL8, width as GLint * 2, height as GLint * 2);
         gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::DEPTH_STENCIL_ATTACHMENT, gl::RENDERBUFFER, rbo);
 
         if FrameBuffer::is_complete() {

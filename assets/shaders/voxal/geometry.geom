@@ -5,8 +5,15 @@ layout (triangle_strip, max_vertices = 24) out;
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
+uniform mat4 light_space_matrix;
 
 out vec2 TexCoord;
+out vec3 Normal;
+out vec3 FragPos;
+// send frag position in light space
+// to fragment shader for shadow map
+// calculations
+out vec4 frag_pos_light_space;
 
 in VS_OUT {
     float[6] blockUVIndices;
@@ -33,6 +40,15 @@ const int cubeIndices[24] = int[24] (
     1, 0, 5, 4, // left
     3, 1, 7, 5  // top
 ); 
+
+const vec3 cubeNormals[6] = vec3[6] (
+    vec3( 0.0,  0.0, -1.0), // front
+    vec3( 1.0,  0.0,  0.0), // right
+    vec3( 0.0,  0.0,  1.0), // back
+    vec3( 0.0, -1.0,  0.0), // bottom
+    vec3(-1.0,  0.0,  0.0), // left
+    vec3( 0.0,  1.0,  0.0)  // top
+);
 
 const vec2 cubeUVs[24] = vec2[24] (
     // front
@@ -72,12 +88,16 @@ const vec2 cubeUVs[24] = vec2[24] (
     vec2(0.0, 0.0)
 );
 
-void emit_vertex(vec4 local_position, vec2 local_uv, int face_index) {
+void emit_vertex(vec4 local_position, vec2 local_uv, int index) {
     vec4 world_position = gl_in[0].gl_Position;
-    gl_Position = projection * view * vec4((world_position + model * local_position).xyz, 1.0);
-    float blockIndex = gs_in[0].blockUVIndices[face_index];
+    vec3 position = (world_position + model * local_position).xyz;
+    FragPos = position;
+    gl_Position = projection * view * vec4(position, 1.0);
+    float blockIndex = gs_in[0].blockUVIndices[index];
 
     TexCoord = local_uv + vec2(float(int(blockIndex) % 6), float(int(blockIndex) / 6));
+    Normal = cubeNormals[index];
+    frag_pos_light_space = light_space_matrix * vec4(FragPos, 1.0);
     EmitVertex();
 }
 

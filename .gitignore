@@ -1,4 +1,3 @@
 /target
-worlds
-.last_world
+game_data
 .DS_Store

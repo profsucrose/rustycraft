@@ -1,5 +1,7 @@
 use cgmath::Vector3;
 
+use crate::models::opengl::text_renderer::TextJustification;
+
 use super::{tex_quad::TexQuad, text_renderer::TextRenderer};
 
 pub struct Button {
@@ -8,7 +10,8 @@ pub struct Button {
     left_x: f32,
     right_x: f32,
     bottom_y: f32,
-    top_y: f32
+    top_y: f32,
+    height: f32
 }
 
 impl Button {
@@ -18,7 +21,12 @@ impl Button {
         let right_x = left_x + width;
         let bottom_y = y - height / 2.0;
         let top_y = bottom_y + height;
-        Button { texquad, left_x, right_x, bottom_y, top_y, text: text.to_string()  }
+        Button { texquad, left_x, right_x, bottom_y, top_y, text: text.to_string(), height }
+    }
+    
+    pub fn set_y(&mut self, y: f32) {
+        self.bottom_y = y - self.height / 2.0;
+        self.top_y = self.bottom_y + self.height; 
     }
 
     pub fn is_hovered(&self, mouse_x: f32, mouse_y: f32) -> bool {
@@ -38,7 +46,7 @@ impl Button {
         let text_y = self.bottom_y + ((self.top_y - self.bottom_y) / 2.0) - text_height / 2.0;
 
         // draw text
-        text_renderer.render_text_centered(self.text.as_str(), text_x, text_y, 1.0, Vector3::new(0.0, 0.0, 0.0));
+        text_renderer.render_text(self.text.as_str(), text_x, text_y, 1.0, Vector3::new(0.0, 0.0, 0.0), TextJustification::Center);
         
         // text shadow
         //text_renderer.render_text_centered(self.text.as_str(), text_x + 1.0, text_y - 1.0, 1.0, Vector3::new(165.0 / 255.0, 154.0 / 255.0, 154.0 / 255.0));

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use gl::types::*;
 use std::ffi::c_void;
 
