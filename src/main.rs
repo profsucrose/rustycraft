@@ -97,7 +97,7 @@ unsafe fn start() {
         false
     );
 
-    let mut player = Player::new(SCR_WIDTH, SCR_HEIGHT);
+    let mut player = Player::new(SCR_WIDTH, SCR_HEIGHT, "assets/textures/player.png");
 
     let mut instant = Instant::now();
 
@@ -179,9 +179,6 @@ unsafe fn start() {
     let mut shift_pressed = false;
     let mut time = 0.01;
     let mut server_chat_opened = false;
-
-    //let framebuffer = FrameBuffer::new(SCR_WIDTH, SCR_HEIGHT);
-    let depth_framebuffer = DepthFrameBuffer::new();
 
     // render loop
     while !window.should_close() {
@@ -327,58 +324,10 @@ unsafe fn start() {
     
                 yellow_text_size += 0.075;
                 
-                // first render to depth map
-                gl::Viewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-                depth_framebuffer.bind();
-                gl::Clear(gl::DEPTH_BUFFER_BIT);
-
-                // RENDER
-                // ------
-                // shader uniforms
-                depth_shader.use_program();
-                // transforms
-                // use different projection for light
-                //-0.8, -1.0, 0.0
-                let light_projection = cgmath::ortho(-10.0, 10.0, -10.0, 10.0, 1.0, 7.5);
-                let light_view = Matrix4::look_at(
-                    Point3::new(0.8, 1.0, 0.0),
-                    Point3::new(0.0, 0.0, 0.0),
-                    Vector3::new(0.0, 1.0, 0.0)
-                );
-                let light_space_matrix = light_projection * light_view;
-                depth_shader.set_mat4("light_space_matrix", light_space_matrix);
-    
-                // draw
-                vao.bind();
-                vbo.bind();
-    
-                let meshes = menu_world.get_world_mesh_from_perspective(0, 0, false);
-                // opaque block points
-                for mesh in meshes.iter() {
-                    vbo.set_data(&mesh.0, gl::DYNAMIC_DRAW);
-                    gl::DrawArrays(gl::POINTS, 0, (mesh.0.len() / 10) as GLint);
-                }
-    
-                // transparent block points
-                for mesh in meshes.iter() {
-                    vbo.set_data(&mesh.1, gl::DYNAMIC_DRAW);
-                    gl::DrawArrays(gl::POINTS, 0, (mesh.1.len() / 10) as GLint);
-                }
-
-                // unbind depth framebuffer
-                DepthFrameBuffer::unbind();
-
-                // reset viewport
-                gl::Viewport(0, 0, SCR_WIDTH as GLint * 2, SCR_HEIGHT as GLint * 2);
-                // ------
-
-                // SECOND RENDER
-                // -------
                 gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
 
                 // shader uniforms
                 shader.use_program();
-                shader.set_mat4("light_space_matrix", light_space_matrix);
                 shader.set_mat4("view", menu_camera.get_view());
                 shader.set_mat4("projection", menu_camera.get_projection());
                 shader.set_mat4("model", Matrix4::<f32>::from_scale(1.0));
@@ -392,10 +341,6 @@ unsafe fn start() {
                 texture_map.bind();
                 shader.set_uint("texture_map", 0);
                 
-                gl::ActiveTexture(gl::TEXTURE1);
-                gl::BindTexture(gl::TEXTURE_2D, depth_framebuffer.depth_map);
-                shader.set_uint("depth_map", 1);
-    
                 // draw
                 vao.bind();
                 vbo.bind();

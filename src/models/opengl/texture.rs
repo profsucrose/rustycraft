@@ -3,6 +3,7 @@ use std::{ffi::c_void, path::Path};
 use gl::types::*;
 use image::{ColorType, GenericImage};
 
+#[derive(Clone, Copy)]
 pub struct Texture {
     id: u32,
     pub texture_id: GLenum

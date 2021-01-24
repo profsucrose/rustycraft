@@ -1,8 +1,8 @@
 use cgmath::{Matrix4, Vector3};
 
-use crate::models::{core::block_type::BlockType, opengl::{camera::Camera, cube::Cube}, traits::game_world::GameWorld};
+use crate::models::{core::block_type::BlockType, opengl::{camera::Camera, cube::Cube, face_uvs::FaceUVs, shader::Shader, texture::{self, Texture}}, traits::game_world::GameWorld};
 
-use super::world::World;
+use super::{face::Face, world::World};
 
 const GRAVITY: f32 = -0.005;
 const TERMINAL_VEL: f32 = -0.6;
@@ -11,22 +11,108 @@ pub struct Player {
     pub camera: Camera,
     is_jumping: bool,
     velocity_y: f32,
-    model: Cube
+    head: Cube,
+    torso: Cube,
+    right_arm: Cube,
+    left_arm: Cube,
+    right_leg: Cube,
+    left_leg: Cube
 }
 
 impl Player {
-    pub unsafe fn new(screen_width: u32, screen_height: u32) -> Player {
+    pub unsafe fn new(screen_width: u32, screen_height: u32, texture_path: &str) -> Player {
+        let texture = Texture::new(texture_path, gl::TEXTURE0, true);
+        let head = Cube::new(
+            texture,
+            FaceUVs::new(0.0, 37.0, 10.0, 48.0, 48.0, 48.0),
+            FaceUVs::new(10.0, 37.0, 20.0, 48.0, 48.0, 48.0),
+            FaceUVs::new(20.0, 37.0, 30.0, 48.0, 48.0, 48.0),
+            FaceUVs::new(30.0, 37.0, 40.0, 48.0, 48.0, 48.0),
+            FaceUVs::new(0.0, 37.0, 10.0, 48.0, 48.0, 48.0),
+            FaceUVs::new(0.0, 37.0, 10.0, 48.0, 48.0, 48.0)
+        );
+        let torso = Cube::new(
+            texture,
+            FaceUVs::new(0.0, 37.0, 11.0, 37.0, 48.0, 48.0),
+            FaceUVs::new(11.0, 37.0, 22.0, 37.0, 48.0, 48.0),
+            FaceUVs::new(22.0, 37.0, 33.0, 37.0, 48.0, 48.0),
+            FaceUVs::new(33.0, 37.0, 44.0, 37.0, 48.0, 48.0),
+            FaceUVs::new(0.0, 37.0, 11.0, 37.0, 48.0, 48.0),
+            FaceUVs::new(0.0, 37.0, 11.0, 37.0, 48.0, 48.0)
+        );
+        let right_arm = Cube::new(
+            texture,
+            FaceUVs::new(0.0, 0.0, 6.0, 11.0, 48.0, 48.0),
+            FaceUVs::new(6.0, 0.0, 12.0, 11.0, 48.0, 48.0),
+            FaceUVs::new(12.0, 0.0, 18.0, 11.0, 48.0, 48.0),
+            FaceUVs::new(18.0, 0.0, 24.0, 11.0, 48.0, 48.0),
+            FaceUVs::new(24.0, 0.0, 30.0, 11.0, 48.0, 48.0),
+            FaceUVs::new(30.0, 0.0, 36.0, 11.0, 48.0, 48.0),
+        );
+        let left_arm = Cube::new(
+            texture,
+            FaceUVs::new(0.0, 11.0, 6.0, 21.0, 48.0, 48.0),
+            FaceUVs::new(6.0, 11.0, 12.0, 21.0, 48.0, 48.0),
+            FaceUVs::new(12.0, 11.0, 18.0, 21.0, 48.0, 48.0),
+            FaceUVs::new(18.0, 11.0, 24.0, 21.0, 48.0, 48.0),
+            FaceUVs::new(24.0, 11.0, 30.0, 21.0, 48.0, 48.0),
+            FaceUVs::new(30.0, 11.0, 36.0, 21.0, 48.0, 48.0),
+        );
+        let right_leg = Cube::new(
+            texture,
+            FaceUVs::new(0.0, 0.0, 6.0, 11.0, 48.0, 48.0),
+            FaceUVs::new(6.0, 0.0, 12.0, 11.0, 48.0, 48.0),
+            FaceUVs::new(12.0, 0.0, 18.0, 11.0, 48.0, 48.0),
+            FaceUVs::new(18.0, 0.0, 24.0, 11.0, 48.0, 48.0),
+            FaceUVs::new(24.0, 0.0, 30.0, 11.0, 48.0, 48.0),
+            FaceUVs::new(30.0, 0.0, 36.0, 11.0, 48.0, 48.0),
+        );
+        let left_leg = Cube::new(
+            texture,
+            FaceUVs::new(0.0, 11.0, 6.0, 21.0, 48.0, 48.0),
+            FaceUVs::new(6.0, 11.0, 12.0, 21.0, 48.0, 48.0),
+            FaceUVs::new(12.0, 11.0, 18.0, 21.0, 48.0, 48.0),
+            FaceUVs::new(18.0, 11.0, 24.0, 21.0, 48.0, 48.0),
+            FaceUVs::new(24.0, 11.0, 30.0, 21.0, 48.0, 48.0),
+            FaceUVs::new(30.0, 11.0, 36.0, 21.0, 48.0, 48.0),
+        );
         let camera = Camera::new(screen_width, screen_height, 0.008);
-        Player { camera, is_jumping: false, velocity_y: TERMINAL_VEL, model: Cube::new() }
+        Player { camera, is_jumping: false, velocity_y: TERMINAL_VEL, head, torso, right_arm, left_arm, right_leg, left_leg }
     }
 
     pub unsafe fn draw_model(&mut self) {
-        let position = self.camera.position;
-        self.model.draw(
+        //let position = self.camera.position;
+
+        self.head.draw(
             &self.camera, 
-            Matrix4::<f32>::from_translation(Vector3::new(position.x + 4.0, position.y - 0.51, position.z)) 
-                * Matrix4::from_nonuniform_scale(1.0, 2.0, 1.0)
+            Matrix4::from_translation(Vector3::new(0.0, 20.0, 0.0))
+            * Matrix4::from_nonuniform_scale(0.7, 0.7, 0.7)
         );
+        self.torso.draw(
+            &self.camera, 
+            Matrix4::from_translation(Vector3::new(0.0, 18.6, 0.0))
+            * Matrix4::from_nonuniform_scale(1.3, 1.5, 0.8)
+        );
+        // self.right_arm.draw(
+        //     &self.camera, 
+        //     Matrix4::from_translation(Vector3::new(0.0, 19.0, 0.0))
+        //     * Matrix4::from_nonuniform_scale(0.5, 2.0, 1.0)
+        // );
+        // self.left_arm.draw(
+        //     &self.camera, 
+        //     Matrix4::from_translation(Vector3::new(0.0, 20.0, 0.0))
+        //     * Matrix4::from_nonuniform_scale(0.5, 2.0, 1.0)
+        // );
+        // self.right_leg.draw(
+        //     &self.camera, 
+        //     Matrix4::from_translation(Vector3::new(0.0, 20.0, 0.0))
+        //     * Matrix4::from_nonuniform_scale(0.5, 2.0, 1.0)
+        // );
+        // self.left_leg.draw(
+        //     &self.camera, 
+        //     Matrix4::from_translation(Vector3::new(0.0, 20.0, 0.0))
+        //     * Matrix4::from_nonuniform_scale(0.5, 2.0, 1.0)
+        // );
     }
 
     pub fn update_position(&mut self, world: &impl GameWorld, deltatime: f32) {

@@ -11,3 +11,5 @@ pub mod input;
 pub mod cube;
 pub mod element_buffer;
 pub mod depth_framebuffer;
+pub mod quad_3d;
+pub mod face_uvs;
