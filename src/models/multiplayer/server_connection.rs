@@ -1,8 +1,9 @@
 use std::{io::{self, BufRead, BufReader, LineWriter, Read, Write}, net::TcpStream, sync::{Arc, Mutex}, thread};
 
+use cgmath::Vector3;
 use serde_json::Result;
 
-use crate::models::multiplayer::{rc_message::RustyCraftMessage, server_world::ServerWorld};
+use crate::models::{multiplayer::{rc_message::RustyCraftMessage, server_player::ServerPlayer, server_world::ServerWorld}, utils::vector_utils::get_direction_from_mouse_move};
 
 use super::{event::RustyCraftEvent, server_state::ServerState};
 
@@ -85,28 +86,57 @@ impl ServerConnection {
                             },
                             // set name can only be done once after player joins, so use it to broadcast
                             // join message
-                            RustyCraftEvent { sender, message: RustyCraftMessage::SetName { name } } => {
-                                state.player_names.lock().unwrap().insert(sender, name.clone());
+                            RustyCraftEvent { sender, message: RustyCraftMessage::PlayerInit { name, x, y, z } } => {
+                                state.players.lock().unwrap().insert(sender.clone(), ServerPlayer::new(sender, name.clone(), x, y, z, 0.0, -90.0));
                                 state.chat_stack.lock().unwrap().push(format!("{} joined the server", name));
                             },
+                            RustyCraftEvent { sender, message: RustyCraftMessage::PlayerPosition { x, y, z } } => {
+                                if let Some(player) = state.players.lock().unwrap().get_mut(&sender) {
+                                    player.position = Vector3::new(x, y, z);
+                                }
+                            },
+                            RustyCraftEvent { sender, message: RustyCraftMessage::PlayerMouseMove { x_offset, y_offset } } => {
+                                if let Some(player) = state.players.lock().unwrap().get_mut(&sender) {
+                                    let (yaw, pitch, direction) = get_direction_from_mouse_move(0.3, player.yaw, player.pitch, -x_offset, y_offset);
+                                    player.yaw = yaw;
+                                    player.pitch = pitch;
+                                    player.rotation = direction;
+                                }
+                            },
                             RustyCraftEvent { sender, message: RustyCraftMessage::ChatMessage { content } } => {
-                                let message = match state.player_names.lock().unwrap().get(&sender) {
+                                let message = match state.players.lock().unwrap().get(&sender) {
                                     Some(player) => format!("<{}> {}", player.name, content),
                                     None => format!("<Unnamed Player> {}", content)
                                 };
                                 state.chat_stack.lock().unwrap().push(message);
                             },
+                            RustyCraftEvent { sender: _, message: RustyCraftMessage::ConnectionData { id, players } } => {
+                                *state.client_id.lock().unwrap() = id;
+                                println!("Received existing players: {:?}", players);
+                                for (id, name, x, y, z, yaw, pitch) in players.iter() {
+                                    state.players.lock().unwrap().insert(id.clone(), ServerPlayer::new(id.clone(), name.clone(), *x, *y, *z, *pitch, *yaw));
+                                }
+                            },
                             RustyCraftEvent { sender, message: RustyCraftMessage::Disconnect } => {
-                                let names = state.player_names.lock().unwrap();
-                                let name = names.get(&sender);
+                                let mut players = state.players.lock().unwrap();
+                                println!("Disconnect for {:?}, players: {:?}", sender, players);
+                                let player = players.get(&sender);
                                 // handle if peer never sent SetName packet
-                                let message = match name {
-                                    Some(name) => format!("{} left the server", name),
+                                let message = match player {
+                                    Some(player) => format!("{} left the server", player.name),
                                     None => String::from("[Unnamed Player] left the server")
                                 };
+
+                                if player.is_some() {
+                                    println!("Removing players from state.players");
+                                    println!("Remvoing key {} from {:?}", sender, players);
+                                    players.remove(&sender);
+                                }
                                 state.chat_stack.lock().unwrap().push(message);
                             }
-                            _ => ()
+                            event => {
+                                println!("Received unhandled event: {:?}", event);
+                            }
                         }
                     }
                 }

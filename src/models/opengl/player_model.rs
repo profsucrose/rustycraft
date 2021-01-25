@@ -1,4 +1,4 @@
-use cgmath::{Matrix4, Vector3};
+use cgmath::{Deg, InnerSpace, Matrix4, Point3, Rad, Vector3};
 
 use super::{camera::Camera, cube::Cube, face_uvs::FaceUVs, texture::Texture};
 
@@ -31,16 +31,21 @@ impl PlayerModel {
         PlayerModel { head, torso }
     }
 
-    pub unsafe fn draw(&mut self, camera: &Camera, position: Vector3<f32>) {
+    pub unsafe fn draw(&self, camera: &Camera, position: Vector3<f32>, pitch: f32, yaw: f32) {
+        let pitch_rotate = Matrix4::from_angle_x(Deg(pitch));
+        let yaw_rotate = Matrix4::from_angle_y(Deg(yaw + 90.0));
         self.head.draw(
             camera, 
             Matrix4::from_translation(Vector3::new(position.x, position.y - 0.35, position.z))
+            * yaw_rotate
+            * pitch_rotate
             * Matrix4::from_nonuniform_scale(0.7, 0.7, 0.7)
         );
         self.torso.draw(
             camera, 
             Matrix4::from_translation(Vector3::new(position.x, position.y - 1.1, position.z))
-            * Matrix4::from_nonuniform_scale(0.7, 0.8, 0.6)
+            * yaw_rotate 
+            * Matrix4::from_nonuniform_scale(0.9, 0.7, 0.6)
         );
     }
 }

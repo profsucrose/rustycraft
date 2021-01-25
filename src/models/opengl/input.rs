@@ -39,7 +39,6 @@ impl Input {
             return;
         }
 
-        println!("{:?}", key);
         if key == Key::Backspace {
             if self.text.len() > 0 {
                 self.text.remove(self.text.len() - 1);
@@ -53,7 +52,6 @@ impl Input {
         }
 
         let ch_id = (key as usize - Key::A as usize) + 65;
-        println!("Char code decimal: {}", ch_id);
         let ch = if shift {
             // ; -> :
             let ch_id = if ch_id == 59 {

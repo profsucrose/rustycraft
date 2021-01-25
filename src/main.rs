@@ -8,7 +8,7 @@ use gl::types::*;
 use image::{RgbaImage, GenericImage};
 use models::{core::{block_type::index_to_block, player::Player}, opengl::{tex_quad::TexQuad}};
 
-use crate::models::{core::{block_type::BlockType, face::Face, window_mode::WindowMode, world::World}, multiplayer::{rc_message::RustyCraftMessage, server_connection::ServerConnection, server_state::ServerState, server_world::ServerWorld}, opengl::{button::Button, camera::Camera, depth_framebuffer::{DepthFrameBuffer, SHADOW_HEIGHT, SHADOW_WIDTH}, framebuffer::FrameBuffer, input::Input, shader::Shader, text_renderer::{TextJustification, TextRenderer}, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}, traits::game_world::GameWorld, utils::name_utils::gen_name};
+use crate::models::{core::{block_type::BlockType, face::Face, window_mode::WindowMode, world::World}, multiplayer::{rc_message::RustyCraftMessage, server_connection::ServerConnection, server_state::ServerState, server_world::ServerWorld}, opengl::{button::Button, camera::Camera, depth_framebuffer::{DepthFrameBuffer, SHADOW_HEIGHT, SHADOW_WIDTH}, framebuffer::FrameBuffer, input::Input, player_model::PlayerModel, shader::Shader, text_renderer::{TextJustification, TextRenderer}, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}, traits::game_world::GameWorld, utils::name_utils::gen_name};
 
 // settings
 const SCR_WIDTH: u32 = 1000;
@@ -179,6 +179,12 @@ unsafe fn start() {
     let mut shift_pressed = false;
     let mut time = 0.01;
     let mut server_chat_opened = false;
+    let mut last_position_before_update_packet = Vector3::new(0.0, 0.0, 0.0);
+    let mut last_rotation_before_update_packet = Vector3::new(0.0, 0.0, 0.0);
+    let mut update_position_packet = Instant::now();
+
+    // player model object
+    let player_model = PlayerModel::new("assets/textures/player_skin.png");
 
     // render loop
     while !window.should_close() {
@@ -271,7 +277,7 @@ unsafe fn start() {
                                                 world.recalculate_mesh_from_perspective(0, 0);
                                                 let world = Arc::new(Mutex::new(world));
                                                 server_state = Some(ServerState::new(world.clone()));
-                                                connection.clone().send_message(RustyCraftMessage::SetName { name: String::from(server_player_name_input.text.clone()) })
+                                                connection.clone().send_message(RustyCraftMessage::PlayerJoin { name: String::from(server_player_name_input.text.clone()) })
                                                     .expect("Failed to set name on join");
                                                 connection.clone().create_listen_thread(server_state.clone().unwrap());
                                                 server_connection = Some(connection.clone());
@@ -386,7 +392,7 @@ unsafe fn start() {
                         server_player_name_input.draw(&text_renderer);
                         back_button.draw(&text_renderer, last_x, last_y);
                         if did_just_fail_to_connect {
-                            text_renderer.render_text("Failed to Connect", button_x - 210.0, 310.0, 1.0, Vector3::new(1.0, 1.0, 1.0), TextJustification::Center);
+                            text_renderer.render_text("Failed to Connect", button_x - 210.0, 310.0, 1.0, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
                         }
                     },
                     _ => panic!("Attempted to display window mode that was not a title menu")
@@ -416,8 +422,6 @@ unsafe fn start() {
                 // update player altitude
                 player.update_alt(world);
 
-                player.draw_model();
-
                 // draw text
                 text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 1.0, 1.0), TextJustification::Left);
                 text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
@@ -425,20 +429,6 @@ unsafe fn start() {
                 text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
                 let block = index_to_block(current_block_index); 
                 text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 110.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-
-                // draw players
-                // let position = &player.camera.position;
-                // player_model.draw(&player.camera, 0.0, position.y, 0.0);
-                // text_renderer.render_text3d(
-                //     &player.camera, 
-                //     "Prof. Sucrose", 
-                //     2.0, 
-                //     20.0,
-                //     17.0, 
-                //     0.005, 
-                //     Vector3::new(1.0, 1.0, 1.0), 
-                //     true
-                // );
 
                 // shader uniforms
                 shader.use_program();
@@ -511,6 +501,10 @@ unsafe fn start() {
             
                             if mouse_captured {
                                 player.camera.mouse_callback(x_offset, y_offset);
+                                connection.send_message(RustyCraftMessage::PlayerMouseMove { 
+                                    x_offset,
+                                    y_offset
+                                }).expect("Failed to send movement packet"); 
                             }
                         },
                         WindowEvent::MouseButton(MouseButton::Button1, Action::Press, _) => {
@@ -559,7 +553,6 @@ unsafe fn start() {
                             mouse_captured = true;
                         },
                         WindowEvent::Key(key, _, Action::Press, _) if server_chat_opened => {
-                            println!("Typed in chat input");
                             chat_input.type_key(key, shift_pressed, &text_renderer);
                         },
                         WindowEvent::Key(Key::T, _, Action::Press, _) => {
@@ -569,7 +562,6 @@ unsafe fn start() {
                             chat_input.set_focus(true);
                         },
                         WindowEvent::Key(Key::LeftSuper, _, Action::Press, _) => {
-                            println!("Toggling window focus");
                             mouse_captured = !mouse_captured;
                             window.set_cursor_mode(match mouse_captured {
                                 true => CursorMode::Disabled,
@@ -616,6 +608,15 @@ unsafe fn start() {
 
                 if server_chat_opened {
                     chat_input.draw(&text_renderer);
+                }
+
+                // player models
+                let client_id = state.client_id.lock().unwrap().clone();
+                for (_, p) in state.players.lock().unwrap().iter() {
+                    //println!("{:?} {:?}", p.id, client_id);
+                    if p.id != client_id {
+                        player_model.draw(&player.camera, p.position, p.pitch, p.yaw);
+                    }
                 }
 
                 // shader uniforms
@@ -667,6 +668,20 @@ unsafe fn start() {
                         player.camera.speed = 0.008;
                     }
                 } 
+
+                // send position update packet at 20FPS if position changed
+                if (update_position_packet.elapsed().as_millis() as f32) > (1000.0 / 20.0) {
+                    if player.camera.position != last_position_before_update_packet {
+                        let position = player.camera.position;
+                        connection.send_message(RustyCraftMessage::PlayerPosition { 
+                            x: position.x, 
+                            y: position.y, 
+                            z: position.z
+                        }).expect("Failed to send movement packet");
+                        last_position_before_update_packet = player.camera.position;
+                    }
+                    update_position_packet = Instant::now();
+                }
             }
         }
         

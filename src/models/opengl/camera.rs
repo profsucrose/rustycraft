@@ -1,6 +1,8 @@
 use cgmath::{Angle, Deg, InnerSpace, Matrix4, Point3, Vector3, perspective, vec3};
 use glfw::{Action, Key};
 
+use crate::models::utils::vector_utils::get_direction_from_mouse_move;
+
 #[derive(PartialEq, Clone, Copy)]
 pub enum CameraMode {
     FirstPerson,
@@ -87,26 +89,10 @@ impl Camera {
     }
 
     pub fn mouse_callback(&mut self, x_offset: f32, y_offset: f32) {
-        let sensitivity = 0.3;
-        let x_offset = x_offset * sensitivity;
-        let y_offset = y_offset * sensitivity;
-
-        self.yaw += x_offset;
-        self.pitch += y_offset;
-
-        // clamp pitch
-        if self.pitch > 89.0 {
-            self.pitch = 89.0;
-        } else if self.pitch < -89.0 {
-            self.pitch = -89.0;
-        }
-
-        let direction = vec3(
-            Deg(self.yaw).cos() * Deg(self.pitch).cos(),
-            Deg(self.pitch).sin(),
-            Deg(self.yaw).sin() * Deg(self.pitch).cos()
-        );
-        self.front = direction.normalize();
+        let (yaw, pitch, direction) = get_direction_from_mouse_move(0.3, self.yaw, self.pitch, x_offset, y_offset);
+        self.pitch = pitch;
+        self.yaw = yaw;
+        self.front = direction;
     }
 
     pub fn scroll_callback(&mut self, y_offset: f32) {
