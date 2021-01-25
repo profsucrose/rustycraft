@@ -1,6 +1,12 @@
 use cgmath::{Angle, Deg, InnerSpace, Matrix4, Point3, Vector3, perspective, vec3};
 use glfw::{Action, Key};
 
+#[derive(PartialEq, Clone, Copy)]
+pub enum CameraMode {
+    FirstPerson,
+    Free
+}
+
 pub struct Camera {
     pub position: Vector3<f32>,
     pub front: Vector3<f32>,
@@ -51,16 +57,20 @@ impl Camera {
         }
     }
 
-    pub fn update_position(&mut self, deltatime: f32) {
+    pub fn update_position(&mut self, deltatime: f32, mode: CameraMode) {
         let speed = self.speed * deltatime;
         let old_y = self.position.y;
-        let front_horiz = Vector3::new(self.front.x, 0.0, self.front.z).normalize();
+
+        let mut front = self.front;
+        if mode == CameraMode::FirstPerson {
+            front = Vector3::new(self.front.x, 0.0, self.front.z).normalize();
+        }
         if self.moving_forward {
-            self.position += speed * front_horiz
+            self.position += speed * front
         } 
         
         if self.moving_backward {
-            self.position -= speed * front_horiz
+            self.position -= speed * front
         } 
     
         if self.moving_right {
@@ -71,7 +81,9 @@ impl Camera {
             self.position -= speed * self.front.cross(self.up).normalize()
         }
 
-        self.position.y = old_y;
+        if mode == CameraMode::FirstPerson {
+            self.position.y = old_y;
+        }
     }
 
     pub fn mouse_callback(&mut self, x_offset: f32, y_offset: f32) {

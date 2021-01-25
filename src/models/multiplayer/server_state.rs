@@ -2,11 +2,13 @@ use std::{collections::HashMap, sync::{Arc, Mutex}};
 
 use crate::models::multiplayer::server_world::ServerWorld;
 
+use super::server_player::ServerPlayer;
+
 #[derive(Clone)]
 pub struct ServerState {
     pub world: Arc<Mutex<ServerWorld>>,
-    pub player_names: Arc<Mutex<HashMap<String, String>>>,
-    pub chat_stack: Arc<Mutex<Vec<String>>>
+    pub player_names: Arc<Mutex<HashMap<String, ServerPlayer>>>,
+    pub chat_stack: Arc<Mutex<Vec<String>>>,
 }
 
 impl ServerState {

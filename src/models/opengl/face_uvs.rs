@@ -9,9 +9,9 @@ impl FaceUVs {
     pub fn new(left: f32, bottom: f32, right: f32, top: f32, width: f32, height: f32) -> FaceUVs {
         FaceUVs {
             left: left / width,
-            bottom: bottom / height,
+            bottom: 1.0 - bottom / height,
             right: right / width,
-            top: top / width
+            top: 1.0 - top / height
         }
     }
 }

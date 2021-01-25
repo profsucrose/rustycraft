@@ -1,0 +1,46 @@
+use cgmath::{Matrix4, Vector3};
+
+use super::{camera::Camera, cube::Cube, face_uvs::FaceUVs, texture::Texture};
+
+pub struct PlayerModel {
+    head: Cube,
+    torso: Cube
+}
+
+impl PlayerModel {
+    pub unsafe fn new(texture_path: &str) -> PlayerModel {
+        let texture = Texture::new(texture_path, gl::TEXTURE0, true);
+        let head = Cube::new(
+            texture,
+            FaceUVs::new(10.0, 10.0, 0.0, 0.0, 60.0, 20.0),
+            FaceUVs::new(20.0, 10.0, 10.0, 0.0, 60.0, 20.0),
+            FaceUVs::new(30.0, 10.0, 20.0, 0.0, 60.0, 20.0),
+            FaceUVs::new(40.0, 10.0, 30.0, 0.0, 60.0, 20.0),
+            FaceUVs::new(50.0, 10.0, 40.0, 0.0, 60.0, 20.0),
+            FaceUVs::new(60.0, 10.0, 50.0, 0.0, 60.0, 20.0),
+        );
+        let torso = Cube::new(
+            texture,
+            FaceUVs::new(10.0, 20.0, 0.0, 10.0, 60.0, 20.0),
+            FaceUVs::new(20.0, 20.0, 10.0, 10.0, 60.0, 20.0),
+            FaceUVs::new(30.0, 20.0, 20.0, 10.0, 60.0, 20.0),
+            FaceUVs::new(40.0, 20.0, 30.0, 10.0, 60.0, 20.0),
+            FaceUVs::new(50.0, 20.0, 40.0, 10.0, 60.0, 20.0),
+            FaceUVs::new(60.0, 20.0, 50.0, 10.0, 60.0, 20.0),
+        );
+        PlayerModel { head, torso }
+    }
+
+    pub unsafe fn draw(&mut self, camera: &Camera, position: Vector3<f32>) {
+        self.head.draw(
+            camera, 
+            Matrix4::from_translation(Vector3::new(position.x, position.y - 0.35, position.z))
+            * Matrix4::from_nonuniform_scale(0.7, 0.7, 0.7)
+        );
+        self.torso.draw(
+            camera, 
+            Matrix4::from_translation(Vector3::new(position.x, position.y - 1.1, position.z))
+            * Matrix4::from_nonuniform_scale(0.7, 0.8, 0.6)
+        );
+    }
+}

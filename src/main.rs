@@ -97,7 +97,7 @@ unsafe fn start() {
         false
     );
 
-    let mut player = Player::new(SCR_WIDTH, SCR_HEIGHT, "assets/textures/player.png");
+    let mut player = Player::new(SCR_WIDTH, SCR_HEIGHT);
 
     let mut instant = Instant::now();
 
@@ -710,6 +710,9 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
 
                 player.camera.mouse_callback(x_offset, y_offset);
             },
+            WindowEvent::Key(Key::F3, _, Action::Press, _) => {
+                player.toggle_camera();
+            }
             WindowEvent::Key(Key::F2, _, Action::Press, _) => {
                 let width = SCR_WIDTH;
                 let height = SCR_HEIGHT;

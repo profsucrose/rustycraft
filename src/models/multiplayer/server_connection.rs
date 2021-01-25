@@ -91,7 +91,7 @@ impl ServerConnection {
                             },
                             RustyCraftEvent { sender, message: RustyCraftMessage::ChatMessage { content } } => {
                                 let message = match state.player_names.lock().unwrap().get(&sender) {
-                                    Some(name) => format!("<{}> {}", name, content),
+                                    Some(player) => format!("<{}> {}", player.name, content),
                                     None => format!("<Unnamed Player> {}", content)
                                 };
                                 state.chat_stack.lock().unwrap().push(message);
