@@ -33,7 +33,7 @@ impl PlayerModel {
 
     pub unsafe fn draw(&self, camera: &Camera, position: Vector3<f32>, pitch: f32, yaw: f32) {
         let pitch_rotate = Matrix4::from_angle_x(Deg(pitch));
-        let yaw_rotate = Matrix4::from_angle_y(Deg(yaw + 90.0));
+        let yaw_rotate = Matrix4::from_angle_y(Deg(-yaw - 90.0));
         self.head.draw(
             camera, 
             Matrix4::from_translation(Vector3::new(position.x, position.y - 0.35, position.z))

@@ -7,7 +7,7 @@ pub enum RustyCraftMessage {
     Movement { direction: Direction },
     PlayerJoin { name: String },
     PlayerInit { name: String, x: f32, y: f32, z: f32 },
-    PlayerMouseMove { x_offset: f32, y_offset: f32 },
+    PlayerDirection { yaw: f32, pitch: f32 },
     PlayerPosition { x: f32, y: f32, z: f32 },
     SetBlock { block: BlockType, world_x: i32, world_y: i32, world_z: i32 },
     GetChunks { coords: Vec<(i32, i32)> },

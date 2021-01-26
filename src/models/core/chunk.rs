@@ -187,9 +187,7 @@ impl Chunk {
             }
 
             vertices_to_push_to.push(faces as f32);
-            // println!("Took {:?} to add a block", instant.elapsed());
         }
-        //self.mesh = Rc::new(vertices);
 
         Rc::new((vertices, water_vertices))
     }

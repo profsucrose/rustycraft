@@ -16,20 +16,20 @@ pub enum BlockType {
     Sand
 }
 
-pub fn index_to_block(index: usize) -> BlockType {
+pub fn index_to_block(index: usize) -> Option<BlockType> {
     match index {
-        0 => BlockType::Grass,
-        1 => BlockType::Dirt,
-        2 => BlockType::Log,
-        3 => BlockType::Leaves,
-        4 => BlockType::Stone,
-        5 => BlockType::Air,
-        6 => BlockType::Orange,
-        7 => BlockType::Black,
-        8 => BlockType::DarkOrange,
-        9 => BlockType::Water,
-        10 => BlockType::Sand,
-        _ => panic!("Attempted to convert index {} to BlockType", index)
+        0 => Some(BlockType::Grass),
+        1 => Some(BlockType::Dirt),
+        2 => Some(BlockType::Log),
+        3 => Some(BlockType::Leaves),
+        4 => Some(BlockType::Stone),
+        5 => Some(BlockType::Air),
+        6 => Some(BlockType::Orange),
+        7 => Some(BlockType::Black),
+        8 => Some(BlockType::DarkOrange),
+        9 => Some(BlockType::Water),
+        10 => Some(BlockType::Sand),
+        _ => None
     }
 }
 

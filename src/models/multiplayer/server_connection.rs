@@ -24,7 +24,12 @@ impl Clone for ServerConnection {
 }
 
 impl ServerConnection {
-    pub fn new(address: String) -> io::Result<ServerConnection> {
+    pub fn new(mut address: String) -> io::Result<ServerConnection> {
+        // default port
+        if !address.contains(":") {
+            address.push_str(":25566");
+        }
+
         let stream = TcpStream::connect(address.clone());
         if stream.is_err() {
             return Err(stream.unwrap_err());
@@ -95,12 +100,10 @@ impl ServerConnection {
                                     player.position = Vector3::new(x, y, z);
                                 }
                             },
-                            RustyCraftEvent { sender, message: RustyCraftMessage::PlayerMouseMove { x_offset, y_offset } } => {
+                            RustyCraftEvent { sender, message: RustyCraftMessage::PlayerDirection { yaw, pitch } } => {
                                 if let Some(player) = state.players.lock().unwrap().get_mut(&sender) {
-                                    let (yaw, pitch, direction) = get_direction_from_mouse_move(0.3, player.yaw, player.pitch, -x_offset, y_offset);
                                     player.yaw = yaw;
                                     player.pitch = pitch;
-                                    player.rotation = direction;
                                 }
                             },
                             RustyCraftEvent { sender, message: RustyCraftMessage::ChatMessage { content } } => {
@@ -112,14 +115,12 @@ impl ServerConnection {
                             },
                             RustyCraftEvent { sender: _, message: RustyCraftMessage::ConnectionData { id, players } } => {
                                 *state.client_id.lock().unwrap() = id;
-                                println!("Received existing players: {:?}", players);
                                 for (id, name, x, y, z, yaw, pitch) in players.iter() {
                                     state.players.lock().unwrap().insert(id.clone(), ServerPlayer::new(id.clone(), name.clone(), *x, *y, *z, *pitch, *yaw));
                                 }
                             },
                             RustyCraftEvent { sender, message: RustyCraftMessage::Disconnect } => {
                                 let mut players = state.players.lock().unwrap();
-                                println!("Disconnect for {:?}, players: {:?}", sender, players);
                                 let player = players.get(&sender);
                                 // handle if peer never sent SetName packet
                                 let message = match player {
@@ -128,8 +129,6 @@ impl ServerConnection {
                                 };
 
                                 if player.is_some() {
-                                    println!("Removing players from state.players");
-                                    println!("Remvoing key {} from {:?}", sender, players);
                                     players.remove(&sender);
                                 }
                                 state.chat_stack.lock().unwrap().push(message);
@@ -141,7 +140,6 @@ impl ServerConnection {
                     }
                 }
             }
-            println!("Stopped read thread");
         });
     }
 }

@@ -53,7 +53,31 @@ impl Input {
 
         let ch_id = (key as usize - Key::A as usize) + 65;
         let ch = if shift {
-            // ; -> :
+            // map characters to uppercase ASCII
+            let ch_id = match ch_id as u8 {
+                b';' => b':',
+                b'1' => b'!',
+                b'2' => b'@',
+                b'3' => b'#',
+                b'4' => b'$',
+                b'5' => b'%',
+                b'6' => b'^',
+                b'7' => b'&',
+                b'8' => b'*',
+                b'9' => b'(',
+                b'0' => b')',
+                b'/' => b'?',
+                b'=' => b'+',
+                b'\'' => b'"',
+                b'[' => b'{',
+                b']' => b'}',
+                b'\\' => b'|',
+                b'-' => b'_',
+                b'`' => b'~',
+                b',' => b'<',
+                b'.' => b'>',
+                _ => ch_id as u8
+            };
             let ch_id = if ch_id == 59 {
                 58
             } else {

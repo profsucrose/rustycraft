@@ -71,7 +71,6 @@ unsafe fn start() {
     gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
 
     let shader = Shader::new_with_geom("assets/shaders/voxal/vertex.vert", "assets/shaders/voxal/fragment.frag", "assets/shaders/voxal/geometry.geom");
-    let depth_shader = Shader::new("assets/shaders/depth_map/depth_vertex.vert", "assets/shaders/depth_map/depth_fragment.frag");
 
     // create vertex array
     let vao = VertexArray::new(); 
@@ -180,7 +179,6 @@ unsafe fn start() {
     let mut time = 0.01;
     let mut server_chat_opened = false;
     let mut last_position_before_update_packet = Vector3::new(0.0, 0.0, 0.0);
-    let mut last_rotation_before_update_packet = Vector3::new(0.0, 0.0, 0.0);
     let mut update_position_packet = Instant::now();
 
     // player model object
@@ -427,7 +425,8 @@ unsafe fn start() {
                 text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
                 text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
                 text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                let block = index_to_block(current_block_index); 
+                
+                let block = index_to_block(current_block_index).unwrap(); 
                 text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 110.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
 
                 // shader uniforms
@@ -501,9 +500,9 @@ unsafe fn start() {
             
                             if mouse_captured {
                                 player.camera.mouse_callback(x_offset, y_offset);
-                                connection.send_message(RustyCraftMessage::PlayerMouseMove { 
-                                    x_offset,
-                                    y_offset
+                                connection.send_message(RustyCraftMessage::PlayerDirection {
+                                    yaw: player.camera.yaw,
+                                    pitch: player.camera.pitch
                                 }).expect("Failed to send movement packet"); 
                             }
                         },
@@ -521,7 +520,7 @@ unsafe fn start() {
                                     let place_position = get_block_on_face(x, y, z, &face);
                                     if can_place_block_at_loc(player.camera.position, place_position.0, place_position.1, place_position.2) {
                                         let block = index_to_block(current_block_index);
-                                        connection.send_message(RustyCraftMessage::SetBlock { world_x: place_position.0, world_y: place_position.1, world_z: place_position.2, block })
+                                        connection.send_message(RustyCraftMessage::SetBlock { world_x: place_position.0, world_y: place_position.1, world_z: place_position.2, block: block.unwrap() })
                                             .expect("Failed to send SetBlock packets");
                                     }
                                 }
@@ -541,6 +540,7 @@ unsafe fn start() {
                                     .expect("Failed to send disconnect message");
                             }
                         },
+                        WindowEvent::Key(Key::F3, _, Action::Press, _) => player.toggle_camera(),
                         WindowEvent::Key(Key::LeftShift, _, Action::Press, _) if server_chat_opened => shift_pressed = true,
                         WindowEvent::Key(Key::LeftShift, _, Action::Release, _) if server_chat_opened => shift_pressed = false,
                         WindowEvent::Key(Key::Enter, _, Action::Press, _) if server_chat_opened => {
@@ -568,8 +568,16 @@ unsafe fn start() {
                                 false => CursorMode::Normal
                             });
                         },
-                        WindowEvent::Key(Key::Up, _, Action::Press, _) => current_block_index += 1,
-                        WindowEvent::Key(Key::Down, _, Action::Press, _) => if current_block_index > 0 { current_block_index -= 1 },
+                        WindowEvent::Key(Key::Up, _, Action::Press, _) => {
+                            if index_to_block(current_block_index + 1).is_some() {
+                                current_block_index += 1
+                            }
+                        },
+                        WindowEvent::Key(Key::Down, _, Action::Press, _) => {
+                            if current_block_index > 0 { 
+                                current_block_index -= 1 
+                            }
+                        },
                         WindowEvent::Key(Key::Space, _, Action::Press, _) => player.jump(),
                         WindowEvent::Key(Key::LeftShift, _, Action::Press, _) => player.camera.speed = 0.05,
                         WindowEvent::Key(Key::LeftShift, _, Action::Release, _) => player.camera.speed = 0.008,
@@ -596,8 +604,8 @@ unsafe fn start() {
                 text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 100.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
                 text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 120.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
                 
-                let block = index_to_block(current_block_index); 
-                text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 130.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                let block = index_to_block(current_block_index).unwrap(); 
+                text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 140.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
 
                 // chat
                 let chat = state.chat_stack.lock().unwrap();
@@ -613,7 +621,6 @@ unsafe fn start() {
                 // player models
                 let client_id = state.client_id.lock().unwrap().clone();
                 for (_, p) in state.players.lock().unwrap().iter() {
-                    //println!("{:?} {:?}", p.id, client_id);
                     if p.id != client_id {
                         player_model.draw(&player.camera, p.position, p.pitch, p.yaw);
                     }
@@ -725,20 +732,18 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
 
                 player.camera.mouse_callback(x_offset, y_offset);
             },
-            WindowEvent::Key(Key::F3, _, Action::Press, _) => {
-                player.toggle_camera();
-            }
-            WindowEvent::Key(Key::F2, _, Action::Press, _) => {
-                let width = SCR_WIDTH;
-                let height = SCR_HEIGHT;
-                let mut data = vec![0u8; (width * height * 4) as usize].into_boxed_slice();
-                unsafe { gl::ReadPixels(0, height as i32, width as i32, height as i32, gl::RGBA, gl::UNSIGNED_BYTE, data.as_mut_ptr() as *mut c_void); }
+            WindowEvent::Key(Key::F3, _, Action::Press, _) => player.toggle_camera(),
+            // WindowEvent::Key(Key::F2, _, Action::Press, _) => {
+            //     let width = SCR_WIDTH;
+            //     let height = SCR_HEIGHT;
+            //     let mut data = vec![0u8; (width * height * 4) as usize].into_boxed_slice();
+            //     unsafe { gl::ReadPixels(0, height as i32, width as i32, height as i32, gl::RGBA, gl::UNSIGNED_BYTE, data.as_mut_ptr() as *mut c_void); }
 
-                let image = RgbaImage::from_raw(width, height, data.to_vec())
-                    .expect("Unable to convert pixel array to RgbImage");
-                image.save("screenshot.png").expect("Unable to write image to file");
-                println!("Saved screenshot");
-            },
+            //     let image = RgbaImage::from_raw(width, height, data.to_vec())
+            //         .expect("Unable to convert pixel array to RgbImage");
+            //     image.save("screenshot.png").expect("Unable to write image to file");
+            //     println!("Saved screenshot");
+            // },
             WindowEvent::MouseButton(MouseButton::Button1, Action::Press, _) => {
                 if let Some(((x, y, z), _)) = selected_coords {
                     world.set_block(*x, *y, *z, BlockType::Air);
@@ -758,7 +763,7 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                     if !can_place_block_at_loc(player.camera.position, place_position.0, place_position.1, place_position.2) {
                         return;
                     }
-                    world.set_block(place_position.0, place_position.1, place_position.2, block);
+                    world.set_block(place_position.0, place_position.1, place_position.2, block.unwrap());
                     *force_recalculation = true;
                 }
             }, 
