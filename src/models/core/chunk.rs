@@ -11,6 +11,13 @@ use super::{block_map::BlockMap, block_type::{BlockType, block_to_uv}, face::Fac
 pub const CHUNK_SIZE: usize = 16;
 pub const CHUNK_HEIGHT: usize = 256;
 
+#[derive(PartialEq)]
+enum Biome {
+    Plains,
+    Desert,
+    Forest
+}
+
 #[derive(Clone)]
 pub struct Chunk {
     pub blocks: BlockMap,
@@ -40,85 +47,101 @@ impl Chunk {
             return Chunk::from(save_path, contents, x_offset, z_offset)
         }
 
-        let amplitude = 5.0;
+        let amplitude = 50.0;
         let mut blocks = BlockMap::new();
         let mut blocks_in_mesh = Vec::new();
         let x_offset = x_offset * 16;
         let z_offset = z_offset * 16;
+        let water_noise_level = 0.08;
         for x in 0..CHUNK_SIZE {
             for z in 0..CHUNK_SIZE {
                 let simplex_x = (x as i32 + x_offset) as f32;
                 let simplex_z = (z as i32 + z_offset) as f32;
                 let noise = gen_heightmap(simplex_x, simplex_z, simplex.clone());
                 let height = (noise * amplitude) as usize + 3;
-                if noise < 0.4 {
-                    // if height is low enough make flat water
-                    // let sand_level = 3;
-                    // for y in 0..sand_level {
-                    //     blocks.set(x, y, z, BlockType::Water);
-                    // }
-                    for y in 0..(0.4 * amplitude) as usize + 2 {
-                        if y < height - 1 {
-                            blocks.set(x, y, z, BlockType::Sand);
-                        } else {
-                            blocks.set(x, y, z, BlockType::Water);
-                        }
-                        blocks_in_mesh.push((x, y, z));
-                    }
-                } else {
-                    for y in 0..height {
-                        let distance_to_top = height - y;
-                        let block =
-                            if noise < 0.7 {
-                                BlockType::Sand
-                            } else {
-                                match distance_to_top {
-                                    1 => BlockType::Grass,
-                                    2 | 3 => BlockType::Dirt,
-                                    _ => BlockType::Stone
+                let biome = get_biome(simplex_x, simplex_z, simplex.clone());
+                match biome {
+                    Biome::Plains | Biome::Forest => {
+                        // forests don't have rivers / bodies of water
+                        if biome == Biome::Plains || noise < water_noise_level {
+                            let water_height = (water_noise_level * amplitude) as usize + 2;
+                            for y in 0..water_height {
+                                if y < height - 1 {
+                                   blocks.set(x, y, z, BlockType::Sand);
+                                } else {
+                                    blocks.set(x, y, z, BlockType::Water);
                                 }
-                            };
-                        
-                        blocks.set(x, y, z, block);
-                        blocks_in_mesh.push((x, y, z));
+                                blocks_in_mesh.push((x, y, z));
+                            }
+                        } else {
+                            for y in 0..height {
+                                let distance_to_top = height - y;
+                                let block = if biome == Biome::Plains && noise < water_noise_level + (1.0 / amplitude) {
+                                    BlockType::Sand
+                                } else {
+                                    match distance_to_top {
+                                        1 => BlockType::Grass,
+                                        2 | 3 => BlockType::Dirt,
+                                        _ => BlockType::Stone
+                                    }
+                                };
+                                blocks.set(x, y, z, block);
+                                blocks_in_mesh.push((x, y, z));
+                            }
+                        }
+                    },
+                    Biome::Desert => {
+                        for y in 0..height {
+                            blocks.set(x, y, z, BlockType::Sand);
+                            blocks_in_mesh.push((x, y, z));
+                        } 
                     }
-                }                
+                }       
             }
         } 
 
         // tree generation logic (hacked together, refactor later)
         let mut rng = rand::thread_rng();
-        if rng.gen::<f32>() < 0.9 {
-            let x = (rng.gen::<f32>() * 11.0) as usize + 3;
-            let z = (rng.gen::<f32>() * 11.0) as usize + 3;
-            let top = blocks.highest_in_column(x, z);
-            if blocks.get(x, top, z) != BlockType::Water {
-                blocks.set(x, top, z, BlockType::Log);
-                blocks_in_mesh.push((x, top, z));
+        let biome = get_biome(x_offset as f32, z_offset as f32, simplex.clone());
+        let count = match biome {
+            Biome::Forest => 5,
+            Biome::Plains => 1,
+            _ => 0
+        };
+        for _ in 0..count {
+            if rng.gen::<f32>() < 0.9 {
+                let x = (rng.gen::<f32>() * 11.0) as usize + 3;
+                let z = (rng.gen::<f32>() * 11.0) as usize + 3;
+                let top = blocks.highest_in_column(x, z);
+                let block = blocks.get(x, top, z);
+                if block != BlockType::Sand && block != BlockType::Water && block != BlockType::Leaves {
+                    blocks.set(x, top, z, BlockType::Log);
+                    blocks_in_mesh.push((x, top, z));
 
-                blocks.set(x, top + 1, z, BlockType::Log);
-                blocks_in_mesh.push((x, top + 1, z));
+                    blocks.set(x, top + 1, z, BlockType::Log);
+                    blocks_in_mesh.push((x, top + 1, z));
 
-                blocks.set(x, top + 2, z, BlockType::Log);
-                blocks_in_mesh.push((x, top + 2, z));
+                    blocks.set(x, top + 2, z, BlockType::Log);
+                    blocks_in_mesh.push((x, top + 2, z));
 
-                blocks.set(x, top + 3, z, BlockType::Log);
-                blocks_in_mesh.push((x, top + 3, z));
+                    blocks.set(x, top + 3, z, BlockType::Log);
+                    blocks_in_mesh.push((x, top + 3, z));
 
-                blocks.set(x + 1, top + 3, z, BlockType::Leaves);
-                blocks_in_mesh.push((x + 1, top + 3, z));
-                
-                blocks.set(x - 1, top + 3, z, BlockType::Leaves);
-                blocks_in_mesh.push((x - 1, top + 3, z));
+                    blocks.set(x + 1, top + 3, z, BlockType::Leaves);
+                    blocks_in_mesh.push((x + 1, top + 3, z));
+                    
+                    blocks.set(x - 1, top + 3, z, BlockType::Leaves);
+                    blocks_in_mesh.push((x - 1, top + 3, z));
 
-                blocks.set(x, top + 3, z + 1, BlockType::Leaves);
-                blocks_in_mesh.push((x, top + 3, z + 1));
+                    blocks.set(x, top + 3, z + 1, BlockType::Leaves);
+                    blocks_in_mesh.push((x, top + 3, z + 1));
 
-                blocks.set(x, top + 3, z - 1, BlockType::Leaves);
-                blocks_in_mesh.push((x, top + 3, z - 1));
+                    blocks.set(x, top + 3, z - 1, BlockType::Leaves);
+                    blocks_in_mesh.push((x, top + 3, z - 1));
 
-                blocks.set(x, top + 4, z, BlockType::Leaves);
-                blocks_in_mesh.push((x, top + 4, z));
+                    blocks.set(x, top + 4, z, BlockType::Leaves);
+                    blocks_in_mesh.push((x, top + 4, z));
+                }
             }
         }
 
@@ -254,17 +277,29 @@ impl Chunk {
     }
 }
 
-fn gen_heightmap(x: f32, z: f32, simplex: Rc<OpenSimplex>) -> f32 {
-    // get distance from center
-    let nx = x / 5.0 - 0.5;
-    let nz = z / 5.0 - 0.5;
-    let d = (nx * nx + nz * nz).sqrt() / (0.5 as f32).sqrt(); 
+fn get_biome(x: f32, z: f32, simplex: Rc<OpenSimplex>) -> Biome {
+    let n = sample_simplex(x / 200.0, z / 200.0, simplex);
+    if n < 0.3 {
+        return Biome::Plains
+    }
 
-    let height = 5.0 * sample_simplex(x / 35.0, z / 35.0, simplex.clone())
-    + 2.0 * sample_simplex(x / 10.0, z / 10.0, simplex.clone())
+    if n < 0.6 {
+        return Biome::Plains
+    }
+
+    Biome::Forest
+}
+
+fn gen_heightmap(x: f32, z: f32, simplex: Rc<OpenSimplex>) -> f32 {
+    let max_height = 5.0 + 2.0 + 2.0 + 0.25;
+    let height = 5.0 * sample_simplex(x / 50.0, z / 50.0, simplex.clone())
+    + 2.0 * sample_simplex(x / 14.0, z / 14.0, simplex.clone())
+    + 2.0 * sample_simplex(x / 200.0, z / 200.0, simplex.clone())
     + 0.25 * sample_simplex(x / 4.0, z / 4.0, simplex.clone());
-    let height = height.powf(1.3);
-    (1.0 + height - d.powf(0.5)) / 2.0
+    // normalize
+    let height = height / max_height;
+    let height = (height * 2.0).powf(3.0);
+    height / 8.0
 }
 
 fn sample_simplex(x: f32, z: f32, simplex: Rc<OpenSimplex>) -> f32 {

@@ -15,6 +15,7 @@ const SCR_WIDTH: u32 = 1000;
 const SCR_HEIGHT: u32 = 600;
 
 const SERVER_RENDER_DISTANCE: u32 = 10;
+const LOCAL_RENDER_DISTANCE: u32 = 20;
 
 fn main() {
     // wrap program in helper
@@ -228,7 +229,7 @@ unsafe fn start() {
                                     }
 
                                     if open_world_button.is_hovered(last_x, last_y) {
-                                        let mut world_object = World::new(10, open_world_input.text.clone().as_str());
+                                        let mut world_object = World::new(LOCAL_RENDER_DISTANCE, open_world_input.text.clone().as_str());
                                         world_object.recalculate_mesh_from_perspective(0, 0);
                                         let last_player_pos = fs::read_to_string(format!("game_data/worlds/{}/player_pos", open_world_input.text.clone().as_str()));
                                         if let Ok(player_pos_str) = last_player_pos {

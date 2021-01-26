@@ -188,8 +188,11 @@ impl ServerWorld {
 
         // set block
         {
-            let chunk = self.get_chunk_mut(chunk_x, chunk_z).unwrap();
-            chunk.set_block(local_x, world_y as usize, local_z, block);
+            let chunk = self.get_chunk_mut(chunk_x, chunk_z);
+            match chunk {
+                Some(chunk) => chunk.set_block(local_x, world_y as usize, local_z, block),
+                None => return
+            }
         }
 
         // update chunk mesh

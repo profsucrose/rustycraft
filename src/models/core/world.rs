@@ -6,7 +6,7 @@ use noise::{OpenSimplex, Seedable};
 
 use crate::models::{traits::{game_chunk::GameChunk, game_world::GameWorld}, utils::world_utils::localize_coords_to_chunk};
 
-use super::{block_type::BlockType, chunk::Chunk, coord_map::CoordMap, face::Face};
+use super::{block_type::BlockType, chunk::{CHUNK_HEIGHT, Chunk}, coord_map::CoordMap, face::Face};
 
 // Vector of Rc of a tuple of opaque and then transparent block point vertices
 type WorldMesh = Vec<Rc<(Vec<f32>, Vec<f32>)>>; 
@@ -26,7 +26,7 @@ impl GameWorld for World {
     fn get_block(&self, world_x: i32, world_y: i32, world_z: i32) -> Option<BlockType> {
         let (chunk_x, chunk_z, local_x, local_z) = localize_coords_to_chunk(world_x, world_z);
         let chunk = self.get_chunk(chunk_x, chunk_z);
-        if chunk.is_none() || world_y < 0 {
+        if chunk.is_none() || world_y < 0 || world_y >= CHUNK_HEIGHT as i32 {
             return None
         }
 
