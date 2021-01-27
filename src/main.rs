@@ -622,10 +622,11 @@ unsafe fn start() {
                 }
                 let position = player.camera.position;
 
-                player.update_position(&*server_world.lock().unwrap(), deltatime);
-
-                // update player altitude
-                player.update_alt(&*server_world.lock().unwrap());
+                let world_lock = server_world.try_lock();
+                if let Ok(world_lock) = world_lock {
+                    player.update_position(&*world_lock, deltatime);
+                    player.update_alt(&*world_lock);
+                }
 
                 // draw clouds
                 render_clouds(&cloud, &player.camera, &player.camera.position, cloud_z_offset, cloud_simplex);
