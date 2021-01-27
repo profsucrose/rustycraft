@@ -29,6 +29,7 @@ You can host a server from the corresponding repository [here](https://github.co
 
 To play on a server, go to the "Connect to Server" menu, type in the server address and then click "Connect." Assuming the specified server address is online you will proceed to join and receive chunk data. You can specify a port with `:<port_number>`, but the default is 25566 (which is also the same when hosting a server).
 
+I myself am hosting a little RustyCraft server at `craft.profsucrose.dev`. Feel free to hop on if you want to try out this project's server functionality or potentially try to build something collectively!
 
 ### Chat
 The functionality/"gameplay" is of course identical to playing locally, however you can send messages in the server chat by pressing `T`, typing your message and pressing `Return` to send it.
