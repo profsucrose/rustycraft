@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use std::{collections::HashMap, ffi::c_void, ptr};
 use cgmath::{InnerSpace, Matrix4, SquareMatrix, Vector2, Vector3, ortho, vec2};
-use freetype::Library;
+use freetype::{Library, ffi::FT_Pos};
 use gl::types::*;
 
 use crate::models::opengl::camera::Camera;
@@ -18,7 +18,7 @@ pub struct Character {
     texture_id: u32, // glyph texture ID
     size: Vector2<i32>, // size of glyph
     pub bearing: Vector2<i32>, // offset from baseline to left/top of glyph
-    advance: i64 // offset to advance to next glyph
+    advance: FT_Pos // offset to advance to next glyph
 }
 
 pub struct TextRenderer {

@@ -30,7 +30,7 @@ impl BlockMap {
 
     pub fn highest_in_column_from_y(&self, x: usize, height: usize, z: usize) -> usize {
         for i in 1..height + 1 {
-            let y = height - i;
+            let y = (height - i).min(CHUNK_HEIGHT - 1);
             let block = self.get(x, y, z);
             if block != BlockType::Air && block != BlockType::Water {
                 return y

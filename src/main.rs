@@ -7,8 +7,8 @@ use glfw::{Action, Context, CursorMode, Key, MouseButton, PixelImage, WindowEven
 use gl::types::*;
 use image::{RgbaImage, GenericImage};
 use models::{core::{block_type::index_to_block, player::Player}, opengl::{tex_quad::TexQuad}};
-
-use crate::models::{core::{block_type::BlockType, face::Face, window_mode::WindowMode, world::World}, multiplayer::{rc_message::RustyCraftMessage, server_connection::ServerConnection, server_state::ServerState, server_world::ServerWorld}, opengl::{button::Button, camera::Camera, depth_framebuffer::{DepthFrameBuffer, SHADOW_HEIGHT, SHADOW_WIDTH}, framebuffer::FrameBuffer, input::Input, player_model::PlayerModel, shader::Shader, text_renderer::{TextJustification, TextRenderer}, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}, traits::game_world::GameWorld, utils::name_utils::gen_name};
+use noise::OpenSimplex;
+use crate::models::{core::{block_type::BlockType, face::Face, window_mode::WindowMode, world::World}, multiplayer::{rc_message::RustyCraftMessage, server_connection::ServerConnection, server_state::ServerState, server_world::ServerWorld}, opengl::{button::Button, camera::Camera, cloud::Cloud, depth_framebuffer::{DepthFrameBuffer, SHADOW_HEIGHT, SHADOW_WIDTH}, framebuffer::FrameBuffer, input::Input, player_model::PlayerModel, shader::Shader, text_renderer::{TextJustification, TextRenderer}, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}, traits::game_world::GameWorld, utils::{name_utils::gen_name, num_utils::distance, simplex_utils::sample}};
 
 // settings
 const SCR_WIDTH: u32 = 1000;
@@ -185,6 +185,13 @@ unsafe fn start() {
     // player model object
     let player_model = PlayerModel::new("assets/textures/player_skin.png");
 
+    // cloud model
+    let cloud = Cloud::new();
+    let cloud_simplex = OpenSimplex::new();
+    let mut cloud_z_offset = 0.0;
+
+    let mut show_gui = true;
+
     // render loop
     while !window.should_close() {
         let deltatime = instant.elapsed().as_millis() as f32;
@@ -193,6 +200,8 @@ unsafe fn start() {
 
         // bind framebuffer
         //framebuffer.bind();
+
+        cloud_z_offset += 0.01;
 
         // clear buffers
         gl::ClearColor(29.0 / 255.0, 104.0 / 255.0, 224.0 / 255.0, 1.0);
@@ -370,7 +379,7 @@ unsafe fn start() {
                 text_renderer.render_text_with_mat("Shitty Minecraft -- in Rust!", 900.0 - subtitle_size * 100.0, y - 130.0, subtitle_size, Vector3::new(1.0, 1.0, 0.0), Matrix4::<f32>::from_angle_z(Deg(10.0)), TextJustification::Center);
                 text_renderer.render_text("RustyCraft", x, y, 3.5, Vector3::new(1.0, 0.0, 0.0), TextJustification::Center);
                 text_renderer.render_text("RustyCraft", x + 3.0, y - 3.0, 3.5, Vector3::new(173.0 / 255.0, 24.0 / 255.0, 24.0 / 255.0), TextJustification::Center);
-                text_renderer.render_text("v0.1", SCR_WIDTH as f32 - 55.0, 10.0, 0.9, Vector3::new(1.0, 1.0, 1.0), TextJustification::Center);
+                text_renderer.render_text("v0.1", SCR_WIDTH as f32 - 65.0, 10.0, 0.9, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
 
                 let last_y = SCR_HEIGHT as f32 - last_y;
                 match window_mode {
@@ -404,6 +413,7 @@ unsafe fn start() {
                 process_events(
                     &mut window, 
                     &events, 
+                    &mut show_gui,
                     &mut mouse_captured,
                     &selected_coords,
                     &mut world,
@@ -421,15 +431,20 @@ unsafe fn start() {
                 // update player altitude
                 player.update_alt(world);
 
-                // draw text
-                text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                
-                let block = index_to_block(current_block_index).unwrap(); 
-                text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 110.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                // draw clouds
+                render_clouds(&cloud, &player.camera, &player.camera.position, cloud_z_offset, cloud_simplex);
 
+                if show_gui {
+                    // draw text
+                    text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+
+                    let block = index_to_block(current_block_index).unwrap(); 
+                    text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 110.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                }
+                
                 // shader uniforms
                 shader.use_program();
                 // transforms
@@ -440,7 +455,7 @@ unsafe fn start() {
                 shader.set_float("time", time);
 
                 // bind texture
-                texture_map.bind();
+                texture_map.bind(); 
                 shader.set_texture("texture_map", &texture_map);
 
                 // draw
@@ -463,7 +478,9 @@ unsafe fn start() {
         
                 selected_coords = world.raymarch_block(&player.camera.position, &player.camera.front);
                 if let Some(((x, y, z), Some(face))) = selected_coords {
-                    draw_block_selector(x, y, z, face, &shader, &vbo);
+                    if show_gui {
+                        draw_block_selector(x, y, z, face, &shader, &vbo);
+                    }
                 }
 
                 // couldn't get framebuffer to work for post-processing
@@ -542,6 +559,7 @@ unsafe fn start() {
                             }
                         },
                         WindowEvent::Key(Key::F3, _, Action::Press, _) => player.toggle_camera(),
+                        WindowEvent::Key(Key::F1, _, Action::Press, _) => show_gui = !show_gui,
                         WindowEvent::Key(Key::LeftShift, _, Action::Press, _) if server_chat_opened => shift_pressed = true,
                         WindowEvent::Key(Key::LeftShift, _, Action::Release, _) if server_chat_opened => shift_pressed = false,
                         WindowEvent::Key(Key::Enter, _, Action::Press, _) if server_chat_opened => {
@@ -598,21 +616,28 @@ unsafe fn start() {
                 // update player altitude
                 player.update_alt(&*server_world.lock().unwrap());
 
-                // draw text
-                text_renderer.render_text(format!("Connected to {}", connection.address).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 60.0, 1.0, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 80.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 100.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 120.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                
-                let block = index_to_block(current_block_index).unwrap(); 
-                text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 140.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                // draw clouds
+                render_clouds(&cloud, &player.camera, &player.camera.position, cloud_z_offset, cloud_simplex);
 
-                // chat
-                let chat = state.chat_stack.lock().unwrap();
-                for i in 0..chat.len().min(10) {
-                    let message = chat[chat.len() - 1 - i].as_str();
-                    text_renderer.render_text(message, 10.0, (i as f32) * 20.0 + 60.0, 0.65, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
+                if show_gui {
+                    // draw text
+                    text_renderer.render_text(format!("Connected to {}", connection.address).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 60.0, 1.0, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 80.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 100.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 120.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+
+                    let block = index_to_block(current_block_index).unwrap(); 
+                    text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 140.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+
+
+
+                    // chat
+                    let chat = state.chat_stack.lock().unwrap();
+                    for i in 0..chat.len().min(10) {
+                        let message = chat[chat.len() - 1 - i].as_str();
+                        text_renderer.render_text(message, 10.0, (i as f32) * 20.0 + 60.0, 0.65, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
+                    }
                 }
 
                 if server_chat_opened {
@@ -662,7 +687,9 @@ unsafe fn start() {
 
                 selected_coords = server_world.raymarch_block(&player.camera.position, &player.camera.front);
                 if let Some(((x, y, z), Some(face))) = selected_coords {
-                    draw_block_selector(x, y, z, face, &shader, &vbo);
+                    if show_gui {
+                        draw_block_selector(x, y, z, face, &shader, &vbo);
+                    }
                 } 
 
                 // couldn't get framebuffer to work for post-processing
@@ -707,7 +734,7 @@ unsafe fn start() {
     }
 }
 
-fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::WindowEvent)>, mouse_captured: &mut bool, selected_coords: &Option<((i32, i32, i32), Option<Face>)>, world: &mut World, player: &mut Player, last_x: &mut f32, last_y: &mut f32, first_mouse: &mut bool, force_recalculation: &mut bool, current_block_index: &mut usize, window_mode: &mut WindowMode) {
+fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::WindowEvent)>, show_gui: &mut bool, mouse_captured: &mut bool, selected_coords: &Option<((i32, i32, i32), Option<Face>)>, world: &mut World, player: &mut Player, last_x: &mut f32, last_y: &mut f32, first_mouse: &mut bool, force_recalculation: &mut bool, current_block_index: &mut usize, window_mode: &mut WindowMode) {
     for (_, event) in glfw::flush_messages(events) {
         match event {
             WindowEvent::FramebufferSize(width, height) => {
@@ -734,6 +761,7 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                 player.camera.mouse_callback(x_offset, y_offset);
             },
             WindowEvent::Key(Key::F3, _, Action::Press, _) => player.toggle_camera(),
+            WindowEvent::Key(Key::F1, _, Action::Press, _) => *show_gui = !*show_gui,
             // WindowEvent::Key(Key::F2, _, Action::Press, _) => {
             //     let width = SCR_WIDTH;
             //     let height = SCR_HEIGHT;
@@ -769,7 +797,11 @@ fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::Windo
                 }
             }, 
             WindowEvent::Key(Key::Space, _, Action::Press, _) => player.jump(),
-            WindowEvent::Key(Key::Up, _, Action::Press, _) => *current_block_index += 1,
+            WindowEvent::Key(Key::Up, _, Action::Press, _) => {
+                if index_to_block(*current_block_index + 1).is_some() {
+                    *current_block_index += 1
+                }
+            },
             WindowEvent::Key(Key::Down, _, Action::Press, _) => if *current_block_index > 0 { *current_block_index -= 1 },
             WindowEvent::Key(Key::LeftShift, _, Action::Press, _) => player.camera.speed = 0.05,
             WindowEvent::Key(Key::LeftShift, _, Action::Release, _) => player.camera.speed = 0.008,
@@ -832,5 +864,24 @@ fn get_block_on_face(x: i32, y: i32, z: i32, face: &Face) -> (i32, i32, i32) {
         Face::Left => (x - 1, y, z),
         Face::Front => (x, y, z - 1),
         Face::Back => (x, y, z + 1),
+    }
+}
+
+unsafe fn render_clouds(cloud: &Cloud, camera: &Camera, player_position: &Vector3<f32>, z_offset: f32, simplex: OpenSimplex) {
+    let cloud_x = (player_position.x as i32) / 10;
+    let cloud_z = (player_position.z as i32) / 10;
+    for x in 0..LOCAL_RENDER_DISTANCE * 4 {
+        for z in 0..LOCAL_RENDER_DISTANCE * 4 {
+            let local_x = LOCAL_RENDER_DISTANCE as i32 * 2 - x as i32;
+            let local_z = LOCAL_RENDER_DISTANCE as i32 * 2 - z as i32;
+            let x = LOCAL_RENDER_DISTANCE as i32 * 2 - x as i32 + cloud_x;
+            let z = LOCAL_RENDER_DISTANCE as i32 * 2 - z as i32 + cloud_z - z_offset as i32 / 10;
+            if distance(0, 0, local_x, local_z) < 2.0 * LOCAL_RENDER_DISTANCE as f32 {
+                let noise = sample(x as f32 / 4.0, z as f32 / 4.0, simplex);
+                if noise > 0.5 {
+                    cloud.draw(camera, x as i32, 100, z as i32, z_offset);
+                }
+            }
+        } 
     }
 }

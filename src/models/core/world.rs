@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use cgmath::{Vector3, InnerSpace};
 use noise::{OpenSimplex, Seedable};
 
-use crate::models::{traits::{game_chunk::GameChunk, game_world::GameWorld}, utils::world_utils::localize_coords_to_chunk};
+use crate::models::{traits::{game_chunk::GameChunk, game_world::GameWorld}, utils::{num_utils::distance, world_utils::localize_coords_to_chunk}};
 
 use super::{block_type::BlockType, chunk::{CHUNK_HEIGHT, Chunk}, coord_map::CoordMap, face::Face};
 
@@ -15,7 +15,7 @@ type WorldMesh = Vec<Rc<(Vec<f32>, Vec<f32>)>>;
 pub struct World {
     chunks: CoordMap<Chunk>,
     render_distance: u32,
-    simplex: Rc<OpenSimplex>,
+    simplex: OpenSimplex,
     player_chunk_x: i32,
     player_chunk_z: i32,
     pub save_dir: String,
@@ -55,7 +55,6 @@ impl World {
 
         let chunks = CoordMap::new();
         let simplex = OpenSimplex::new().set_seed(seed);
-        let simplex = Rc::new(simplex);
         
         let save_dir = format!("game_data/worlds/{}", save_dir);
         World { chunks, render_distance, simplex, player_chunk_x: 0, player_chunk_z: 0, save_dir, mesh: vec![] }
@@ -105,7 +104,7 @@ impl World {
             let x = (x as i32) - (self.render_distance as i32) + player_chunk_x;
             for z in 0..self.render_distance * 2 {
                 let z = (z as i32) - (self.render_distance as i32) + player_chunk_z;
-                if (((player_chunk_x - x).pow(2) + (player_chunk_z - z).pow(2)) as f32).sqrt() > self.render_distance as f32 {
+                if distance(player_chunk_x, player_chunk_z, x, z) > self.render_distance as f32 {
                     continue;
                 }
 

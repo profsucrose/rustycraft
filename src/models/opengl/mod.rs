@@ -13,4 +13,5 @@ pub mod element_buffer;
 pub mod depth_framebuffer;
 pub mod face_uvs;
 pub mod player_model;
-pub mod cubemap;
+pub mod skybox;
+pub mod cloud;

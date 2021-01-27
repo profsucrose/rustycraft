@@ -108,6 +108,5 @@ impl Cube {
         
         VertexArray::unbind();
         VertexBuffer::unbind();
-        ElementBuffer::unbind();
     }
 }
