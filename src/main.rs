@@ -10,6 +10,7 @@ use models::{core::{block_type::index_to_block, player::Player}, opengl::{tex_qu
 use noise::OpenSimplex;
 use rand::{Rng, thread_rng};
 use crate::models::{core::{block_type::BlockType, face::Face, window_mode::WindowMode, world::World}, multiplayer::{rc_message::RustyCraftMessage, server_connection::ServerConnection, server_state::ServerState, server_world::ServerWorld}, opengl::{button::Button, camera::Camera, cloud::Cloud, depth_framebuffer::{DepthFrameBuffer, SHADOW_HEIGHT, SHADOW_WIDTH}, framebuffer::FrameBuffer, input::Input, player_model::PlayerModel, shader::Shader, text_renderer::{TextJustification, TextRenderer}, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}, traits::game_world::GameWorld, utils::{name_utils::gen_name, num_utils::distance, simplex_utils::sample}};
+use std::env;
 
 // settings
 const SCR_WIDTH: u32 = 1000;
@@ -194,7 +195,7 @@ unsafe fn start() {
     let mut show_gui = true;
 
     let subtitle_text = get_subtitle_text();
-
+    
     // render loop
     while !window.should_close() {
         let deltatime = instant.elapsed().as_millis() as f32;
@@ -205,6 +206,10 @@ unsafe fn start() {
         //framebuffer.bind();
 
         cloud_z_offset += 0.01;
+
+        let (screen_width, screen_height) = window.get_size();
+        let screen_width = screen_width as u32;
+        let screen_height = screen_height as u32;
 
         // clear buffers
         gl::ClearColor(29.0 / 255.0, 104.0 / 255.0, 224.0 / 255.0, 1.0);
@@ -226,21 +231,21 @@ unsafe fn start() {
                             let last_y = SCR_HEIGHT as f32 - last_y;
                             match window_mode {
                                 WindowMode::Title => {
-                                    if select_worlds_button.is_hovered(last_x, last_y) {
+                                    if select_worlds_button.is_hovered(last_x, last_y, screen_width, screen_height) {
                                         window_mode = WindowMode::OpenWorld;
                                     }
         
-                                    if connect_to_server_button.is_hovered(last_x, last_y) {
+                                    if connect_to_server_button.is_hovered(last_x, last_y, screen_width, screen_height) {
                                         window_mode = WindowMode::ConnectToServer;
                                     }
                                 },
                                 WindowMode::OpenWorld => {
                                     open_world_input.update_focus(last_x, last_y);
-                                    if back_button.is_hovered(last_x, last_y) {
+                                    if back_button.is_hovered(last_x, last_y, screen_width, screen_height) {
                                         window_mode = WindowMode::Title;
                                     }
 
-                                    if open_world_button.is_hovered(last_x, last_y) {
+                                    if open_world_button.is_hovered(last_x, last_y, screen_width, screen_height) {
                                         let mut world_object = World::new(LOCAL_RENDER_DISTANCE, open_world_input.text.clone().as_str());
                                         world_object.recalculate_mesh_from_perspective(0, 0);
                                         let last_player_pos = fs::read_to_string(format!("game_data/worlds/{}/player_pos", open_world_input.text.clone().as_str()));
@@ -276,7 +281,7 @@ unsafe fn start() {
                                 WindowMode::ConnectToServer => {
                                     connect_to_server_input.update_focus(last_x, last_y);
                                     server_player_name_input.update_focus(last_x, last_y);
-                                    if connect_button.is_hovered(last_x, last_y) {
+                                    if connect_button.is_hovered(last_x, last_y, screen_width, screen_height) {
                                         let address = connect_to_server_input.text.clone();
                                         let connection = ServerConnection::new(address.clone());
                                         match connection {
@@ -304,7 +309,7 @@ unsafe fn start() {
                                         }
                                     }
 
-                                    if back_button.is_hovered(last_x, last_y) {
+                                    if back_button.is_hovered(last_x, last_y, screen_width, screen_height) {
                                         window_mode = WindowMode::Title;
                                         did_just_fail_to_connect = false;
                                     }
@@ -387,21 +392,21 @@ unsafe fn start() {
                 let last_y = SCR_HEIGHT as f32 - last_y;
                 match window_mode {
                     WindowMode::Title => {
-                        select_worlds_button.draw(&text_renderer, last_x, last_y);
-                        connect_to_server_button.draw(&text_renderer, last_x, last_y);
+                        select_worlds_button.draw(&text_renderer, last_x, last_y, screen_width, screen_height);
+                        connect_to_server_button.draw(&text_renderer, last_x, last_y, screen_width, screen_height);
                     },
                     WindowMode::OpenWorld => {
                         back_button.set_y(140.0);
-                        open_world_button.draw(&text_renderer, last_x, last_y);
+                        open_world_button.draw(&text_renderer, last_x, last_y, screen_width, screen_height);
                         open_world_input.draw(&text_renderer);
-                        back_button.draw(&text_renderer, last_x, last_y);
+                        back_button.draw(&text_renderer, last_x, last_y, screen_width, screen_height);
                     },
                     WindowMode::ConnectToServer => {
                         back_button.set_y(70.0);
-                        connect_button.draw(&text_renderer, last_x, last_y);
+                        connect_button.draw(&text_renderer, last_x, last_y, screen_width, screen_height);
                         connect_to_server_input.draw(&text_renderer);
                         server_player_name_input.draw(&text_renderer);
-                        back_button.draw(&text_renderer, last_x, last_y);
+                        back_button.draw(&text_renderer, last_x, last_y, screen_width, screen_height);
                         if did_just_fail_to_connect {
                             text_renderer.render_text("Failed to Connect", button_x - 210.0, 310.0, 1.0, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
                         }

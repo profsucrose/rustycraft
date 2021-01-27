@@ -11,7 +11,9 @@ pub struct Button {
     right_x: f32,
     bottom_y: f32,
     top_y: f32,
-    height: f32
+    height: f32,
+    screen_width: u32,
+    screen_height: u32
 }
 
 impl Button {
@@ -21,7 +23,7 @@ impl Button {
         let right_x = left_x + width;
         let bottom_y = y - height / 2.0;
         let top_y = bottom_y + height;
-        Button { texquad, left_x, right_x, bottom_y, top_y, text: text.to_string(), height }
+        Button { texquad, left_x, right_x, bottom_y, top_y, text: text.to_string(), height, screen_width, screen_height }
     }
     
     pub fn set_y(&mut self, y: f32) {
@@ -29,11 +31,16 @@ impl Button {
         self.top_y = self.bottom_y + self.height; 
     }
 
-    pub fn is_hovered(&self, mouse_x: f32, mouse_y: f32) -> bool {
-        mouse_x > self.left_x && mouse_x < self.right_x && mouse_y > self.bottom_y && mouse_y < self.top_y
+    pub fn is_hovered(&self, mouse_x: f32, mouse_y: f32, screen_width: u32, screen_height: u32) -> bool {
+        let norm_mouse_x = mouse_x / screen_width as f32;
+        let norm_mouse_y = mouse_y / screen_height as f32;
+        norm_mouse_x > self.left_x / self.screen_width as f32 
+            && norm_mouse_x < self.right_x / self.screen_width as f32 
+            && norm_mouse_y > self.bottom_y / self.screen_height as f32 
+            && norm_mouse_y < self.top_y / self.screen_height as f32
     }
 
-    pub unsafe fn draw(&self, text_renderer: &TextRenderer, mouse_x: f32, mouse_y: f32) {
+    pub unsafe fn draw(&self, text_renderer: &TextRenderer, mouse_x: f32, mouse_y: f32, screen_width: u32, screen_height: u32) {
         let text_x = self.left_x + ((self.right_x - self.left_x) / 2.0);
         let mut text_height = 0.0;
         for c in self.text.as_bytes() {
@@ -51,7 +58,7 @@ impl Button {
         // text shadow
         //text_renderer.render_text_centered(self.text.as_str(), text_x + 1.0, text_y - 1.0, 1.0, Vector3::new(165.0 / 255.0, 154.0 / 255.0, 154.0 / 255.0));
 
-        let opacity = if self.is_hovered(mouse_x, mouse_y) {
+        let opacity = if self.is_hovered(mouse_x, mouse_y, screen_width, screen_height) {
             0.8
         } else {
             1.0
