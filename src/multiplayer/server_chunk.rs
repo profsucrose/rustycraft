@@ -1,11 +1,6 @@
 #![allow(dead_code)]
-use std::{fs, rc::Rc, sync::Arc};
-
-use noise::{NoiseFn, OpenSimplex};
-
-use rand::prelude::*;
-
-use crate::models::{core::{block_map::BlockMap, block_type::{BlockType, block_to_uv, index_to_block}, face::Face}, traits::game_chunk::GameChunk, utils::chunk_utils::from_serialized};
+use std::sync::Arc;
+use crate::{core::{block_map::BlockMap, block_type::{BlockType, block_to_uv}, face::Face}, traits::game_chunk::GameChunk, utils::chunk_utils::from_serialized};
 
 #[derive(Clone)]
 pub struct ServerChunk {

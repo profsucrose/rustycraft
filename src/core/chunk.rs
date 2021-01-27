@@ -1,12 +1,12 @@
 use std::{fs, rc::Rc};
 
-use noise::{NoiseFn, OpenSimplex};
+use noise::OpenSimplex;
 
 use rand::prelude::*;
 
-use crate::models::{core::block_type::index_to_block, traits::game_chunk::GameChunk, utils::{chunk_utils::{from_serialized, to_serialized}, simplex_utils::sample}};
+use crate::{traits::game_chunk::GameChunk, utils::{chunk_utils::{from_serialized, to_serialized}, simplex_utils::sample}};
 
-use super::{block_map::BlockMap, block_type::{BlockType, block_to_uv}, face::Face, world::World};
+use super::{block_map::BlockMap, block_type::{BlockType, block_to_uv}, face::Face};
 
 pub const CHUNK_SIZE: usize = 16;
 pub const CHUNK_HEIGHT: usize = 256;

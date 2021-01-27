@@ -1,4 +1,4 @@
-use crate::models::core::{block_map::BlockMap, chunk::CHUNK_HEIGHT};
+use crate::core::{block_map::BlockMap, chunk::CHUNK_HEIGHT};
 
 pub trait GameChunk {
     fn get_blocks(&self) -> &BlockMap;

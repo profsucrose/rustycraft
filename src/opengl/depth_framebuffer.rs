@@ -1,9 +1,6 @@
 #![allow(dead_code)]
-use std::{ffi::c_void, ptr};
-
+use std::ptr;
 use gl::types::*;
-
-use super::{shader::Shader, vertex_array::VertexArray, vertex_buffer::VertexBuffer};
 
 pub const SHADOW_WIDTH: GLint = 10024;
 pub const SHADOW_HEIGHT: GLint = 10024;

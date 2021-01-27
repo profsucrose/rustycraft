@@ -1,8 +1,5 @@
-use cgmath::{Matrix4, Vector3};
-
-use crate::models::{core::block_type::BlockType, opengl::{camera::{Camera, CameraMode}, cube::Cube, face_uvs::FaceUVs, shader::Shader, texture::{self, Texture}}, traits::game_world::GameWorld};
-
-use super::{face::Face, world::World};
+use cgmath::Vector3;
+use crate::{core::block_type::BlockType, opengl::{camera::{Camera, CameraMode}}, traits::game_world::GameWorld};
 
 const GRAVITY: f32 = -0.005;
 const TERMINAL_VEL: f32 = -0.6;

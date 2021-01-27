@@ -1,11 +1,9 @@
 #![allow(dead_code)]
-use std::ptr;
+use cgmath::Matrix4;
 
-use cgmath::{Matrix4, Vector3};
+use crate::opengl::camera::Camera;
 
-use crate::models::opengl::camera::Camera;
-
-use super::{element_buffer::ElementBuffer, face_uvs::FaceUVs, shader::Shader, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer};
+use super::{face_uvs::FaceUVs, shader::Shader, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer};
 
 pub struct Cube {
     vao: VertexArray,

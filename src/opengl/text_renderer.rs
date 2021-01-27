@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 use std::{collections::HashMap, ffi::c_void, ptr};
-use cgmath::{InnerSpace, Matrix4, SquareMatrix, Vector2, Vector3, ortho, vec2};
+use cgmath::{Matrix4, SquareMatrix, Vector2, Vector3, ortho, vec2};
 use freetype::{Library, ffi::FT_Pos};
 use gl::types::*;
 
-use crate::models::opengl::camera::Camera;
+use crate::opengl::camera::Camera;
 
 use super::shader::Shader;
 

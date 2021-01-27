@@ -1,7 +1,5 @@
 use cgmath::Vector3;
 
-use crate::models::opengl::{player_model::PlayerModel, texture::Texture};
-
 #[derive(Debug)]
 pub struct ServerPlayer {
     pub id: String,

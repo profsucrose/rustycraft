@@ -1,9 +1,9 @@
-use std::{io::{self, BufRead, BufReader, LineWriter, Read, Write}, net::TcpStream, sync::{Arc, Mutex}, thread};
+use std::{io::{self, BufRead, BufReader, LineWriter, Write}, net::TcpStream, thread};
 
 use cgmath::Vector3;
 use serde_json::Result;
 
-use crate::models::{multiplayer::{rc_message::RustyCraftMessage, server_player::ServerPlayer, server_world::ServerWorld}, utils::vector_utils::get_direction_from_mouse_move};
+use crate::multiplayer::{rc_message::RustyCraftMessage, server_player::ServerPlayer};
 
 use super::{event::RustyCraftEvent, server_state::ServerState};
 

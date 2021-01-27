@@ -1,6 +1,4 @@
-use cgmath::Matrix4;
 use gl::types::*;
-use std::rc::Rc;
 
 use super::{shader::Shader, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer};
 

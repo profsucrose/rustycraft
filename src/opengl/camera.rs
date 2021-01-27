@@ -1,7 +1,7 @@
-use cgmath::{Angle, Deg, InnerSpace, Matrix4, Point3, Vector3, perspective, vec3};
+use cgmath::{Deg, InnerSpace, Matrix4, Point3, Vector3, perspective, vec3};
 use glfw::{Action, Key};
 
-use crate::models::utils::vector_utils::get_direction_from_mouse_move;
+use crate::utils::vector_utils::get_direction_from_mouse_move;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum CameraMode {

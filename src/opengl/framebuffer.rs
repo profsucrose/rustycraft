@@ -1,6 +1,5 @@
 #![allow(dead_code)]
-use std::{ffi::c_void, ptr};
-
+use std::ptr;
 use gl::types::*;
 
 use super::{shader::Shader, vertex_array::VertexArray, vertex_buffer::VertexBuffer};

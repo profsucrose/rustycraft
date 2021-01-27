@@ -1,16 +1,19 @@
-#![allow(unused_imports)]
-mod models;      
+// modules
+mod core;
+mod multiplayer;
+mod opengl;
+mod traits;
+mod utils;
 
-use std::{ffi::c_void, fs, mem, path::Path, ptr, sync::{Arc, Mutex, mpsc::Receiver}, time::Instant};
-use cgmath::{Deg, Matrix3, Matrix4, Point3, Vector3, vec3};
+// imports
+use std::{fs, path::Path, sync::{Arc, Mutex, mpsc::Receiver}, time::Instant};
+use cgmath::{Deg, Matrix4, Vector3};
 use glfw::{Action, Context, CursorMode, Key, MouseButton, PixelImage, WindowEvent};
-use gl::types::*;
-use image::{RgbaImage, GenericImage};
-use models::{core::{block_type::index_to_block, player::Player}, opengl::{tex_quad::TexQuad}};
+use image::GenericImage;
 use noise::OpenSimplex;
-use rand::{Rng, thread_rng};
-use crate::models::{core::{block_type::BlockType, face::Face, window_mode::WindowMode, world::World}, multiplayer::{rc_message::RustyCraftMessage, server_connection::ServerConnection, server_state::ServerState, server_world::ServerWorld}, opengl::{button::Button, camera::Camera, cloud::Cloud, depth_framebuffer::{DepthFrameBuffer, SHADOW_HEIGHT, SHADOW_WIDTH}, framebuffer::FrameBuffer, input::Input, player_model::PlayerModel, shader::Shader, text_renderer::{TextJustification, TextRenderer}, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}, traits::game_world::GameWorld, utils::{name_utils::gen_name, num_utils::distance, simplex_utils::sample}};
-use std::env;
+use gl::types::*;
+use rand::Rng;
+use crate::{core::{block_type::{BlockType, index_to_block}, face::Face, player::Player, window_mode::WindowMode, world::World}, multiplayer::{rc_message::RustyCraftMessage, server_connection::ServerConnection, server_state::ServerState, server_world::ServerWorld}, opengl::{button::Button, camera::Camera, cloud::Cloud, input::Input, player_model::PlayerModel, shader::Shader, tex_quad::TexQuad, text_renderer::{TextJustification, TextRenderer}, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}, traits::game_world::GameWorld, utils::{name_utils::gen_name, num_utils::distance, simplex_utils::sample}};
 
 // settings
 const SCR_WIDTH: u32 = 1000;
@@ -444,13 +447,13 @@ unsafe fn start() {
 
                 if show_gui {
                     // draw text
-                    text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                    text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                    text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                    text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 50.0, 0.6, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 70.0, 0.6, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 90.0, 0.6, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
 
                     let block = index_to_block(current_block_index).unwrap(); 
-                    text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 110.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 110.0, 0.6, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
                 }
                 
                 // shader uniforms
@@ -629,16 +632,14 @@ unsafe fn start() {
 
                 if show_gui {
                     // draw text
-                    text_renderer.render_text(format!("Connected to {}", connection.address).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                    text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 60.0, 1.0, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                    text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 80.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                    text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 100.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-                    text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 120.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("Connected to {}", connection.address).as_str(), 10.0, (SCR_HEIGHT as f32) - 30.0, 1.0, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("FPS: {}", (1000.0 / deltatime).round()).as_str(), 10.0, (SCR_HEIGHT as f32) - 60.0, 1.0, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("x: {:.2}", player.camera.position.x).as_str(), 10.0, (SCR_HEIGHT as f32) - 80.0, 0.6, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("y: {:.2}", player.camera.position.y).as_str(), 10.0, (SCR_HEIGHT as f32) - 100.0, 0.6, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
+                    text_renderer.render_text(format!("z: {:.2}", player.camera.position.z).as_str(), 10.0, (SCR_HEIGHT as f32) - 120.0, 0.6, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
 
                     let block = index_to_block(current_block_index).unwrap(); 
-                    text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 140.0, 0.6, vec3(1.0, 1.0, 1.0), TextJustification::Left);
-
-
+                    text_renderer.render_text(format!("Selected block: {:?}", block).as_str(), 10.0, (SCR_HEIGHT as f32) - 140.0, 0.6, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
 
                     // chat
                     let chat = state.chat_stack.lock().unwrap();

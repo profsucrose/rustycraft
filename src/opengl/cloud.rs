@@ -1,7 +1,6 @@
 #![allow(dead_code)]
-use std::ptr;
-use cgmath::{Matrix3, Matrix4, Vector3};
-use crate::models::opengl::{camera::Camera, shader::Shader, vertex_array::VertexArray, vertex_buffer::VertexBuffer};
+use cgmath::{Matrix4, Vector3};
+use crate::opengl::{camera::Camera, shader::Shader, vertex_array::VertexArray, vertex_buffer::VertexBuffer};
 
 pub struct Cloud { 
     vao: VertexArray,

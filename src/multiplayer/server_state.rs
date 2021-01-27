@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::{Arc, Mutex}};
 
-use crate::models::multiplayer::server_world::ServerWorld;
+use crate::multiplayer::server_world::ServerWorld;
 
 use super::server_player::ServerPlayer;
 

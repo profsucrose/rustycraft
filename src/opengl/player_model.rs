@@ -1,4 +1,4 @@
-use cgmath::{Deg, InnerSpace, Matrix4, Point3, Rad, Vector3};
+use cgmath::{Deg, Matrix4, Vector3};
 
 use super::{camera::Camera, cube::Cube, face_uvs::FaceUVs, texture::Texture};
 

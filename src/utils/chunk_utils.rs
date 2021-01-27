@@ -1,9 +1,7 @@
 #![allow(dead_code)]
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use serde_json::{to_string, to_string_pretty};
-
-use crate::models::core::{block_map::BlockMap, block_type::{BlockType, index_to_block}, chunk::{CHUNK_HEIGHT, CHUNK_SIZE}};
+use crate::core::{block_map::BlockMap, block_type::index_to_block};
 
 type BlocksInMesh = Vec<(usize, usize, usize)>;
 

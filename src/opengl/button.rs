@@ -1,6 +1,6 @@
 use cgmath::Vector3;
 
-use crate::models::opengl::text_renderer::TextJustification;
+use crate::opengl::text_renderer::TextJustification;
 
 use super::{tex_quad::TexQuad, text_renderer::TextRenderer};
 

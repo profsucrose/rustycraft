@@ -1,32 +1,30 @@
-use std::{fs, rc::Rc};
-use std::time::{SystemTime, UNIX_EPOCH};
-
+// world struct for managing and
+// parsing world data from a server
+use std::{collections::HashSet, sync::Arc};
 use cgmath::{Vector3, InnerSpace};
-use noise::{OpenSimplex, Seedable};
+use crate::{core::{block_type::BlockType, coord_map::CoordMap, face::Face}, multiplayer::{rc_message::RustyCraftMessage, server_chunk::ServerChunk}, traits::{game_chunk::GameChunk, game_world::GameWorld}};
+use super::server_connection::ServerConnection;
 
-use crate::models::{traits::{game_chunk::GameChunk, game_world::GameWorld}, utils::{num_utils::distance, world_utils::localize_coords_to_chunk}};
-
-use super::{block_type::BlockType, chunk::{CHUNK_HEIGHT, Chunk}, coord_map::CoordMap, face::Face};
-
-// Vector of Rc of a tuple of opaque and then transparent block point vertices
-type WorldMesh = Vec<Rc<(Vec<f32>, Vec<f32>)>>; 
+// Vector of Arc (to be thread-safe with server connection listen thread)
+// of a tuple of opaque and then transparent block point vertices
+type WorldMesh = Vec<Arc<(Vec<f32>, Vec<f32>)>>; 
 
 #[derive(Clone)]
-pub struct World {
-    chunks: CoordMap<Chunk>,
+pub struct ServerWorld {
+    chunks: CoordMap<ServerChunk>,
     render_distance: u32,
-    simplex: OpenSimplex,
     player_chunk_x: i32,
     player_chunk_z: i32,
-    pub save_dir: String,
-    mesh: WorldMesh
+    mesh: WorldMesh,
+    chunk_fetch_queue: HashSet<(i32, i32)>,
+    server_connection: ServerConnection
 }
 
-impl GameWorld for World {
+impl GameWorld for ServerWorld {
     fn get_block(&self, world_x: i32, world_y: i32, world_z: i32) -> Option<BlockType> {
-        let (chunk_x, chunk_z, local_x, local_z) = localize_coords_to_chunk(world_x, world_z);
+        let (chunk_x, chunk_z, local_x, local_z) = self.localize_coords_to_chunk(world_x, world_z);
         let chunk = self.get_chunk(chunk_x, chunk_z);
-        if chunk.is_none() || world_y < 0 || world_y >= CHUNK_HEIGHT as i32 {
+        if chunk.is_none() || world_y < 0 {
             return None
         }
 
@@ -46,44 +44,23 @@ impl GameWorld for World {
 }
 
 // handles world block data and rendering
-impl World {
-    pub fn new_with_seed(render_distance: u32, save_dir: &str, seed: u32) -> World {
-        // create world directory if it does not exist
-        let dir = format!("game_data/worlds/{}/chunks", save_dir);
-        fs::create_dir_all(dir.clone()) 
-            .expect(format!("Failed to recursively create {}", dir.clone()).as_str());
-
-        let chunks = CoordMap::new();
-        let simplex = OpenSimplex::new().set_seed(seed);
-        
-        let save_dir = format!("game_data/worlds/{}", save_dir);
-        World { chunks, render_distance, simplex, player_chunk_x: 0, player_chunk_z: 0, save_dir, mesh: vec![] }
-    }
-
-    pub fn new(render_distance: u32, save_dir: &str) -> World {
-        let seed_path = format!("game_data/worlds/{}/seed", save_dir);
-        let seed = fs::read_to_string(seed_path.clone());
-        // read seed from world dir otherwise create
-        // one and write to disk
-        let seed = match seed {
-            Ok(seed) => seed.parse::<u32>().unwrap(),
-            Err(_) => {
-                let seed = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u32;
-                fs::create_dir_all(format!("game_data/worlds/{}", save_dir))
-                    .expect("Failed to create world directory");
-                fs::write(seed_path.clone(), format!("{}", seed))
-                    .expect(format!("Failed to write seed to {}", seed_path).as_str());
-                seed
-            }
-        };
-        World::new_with_seed(render_distance, save_dir, seed)
+impl ServerWorld {
+    pub fn new(render_distance: u32, server_connection: ServerConnection) -> ServerWorld {
+        ServerWorld {
+            chunks: CoordMap::new(),
+            render_distance, 
+            player_chunk_x: 0, 
+            player_chunk_z: 0, 
+            mesh: WorldMesh::new(), 
+            chunk_fetch_queue: HashSet::new(), 
+            server_connection 
+        }
     }
 
     pub fn get_world_mesh_from_perspective(&mut self, player_x: i32, player_z: i32, force: bool) -> &WorldMesh {
         let player_chunk_x = player_x / 16;
         let player_chunk_z = player_z / 16;
         if !force 
-            && self.mesh.len() > 0 
             && self.player_chunk_x == player_chunk_x 
             && self.player_chunk_z == player_chunk_z {
             return &self.mesh
@@ -97,23 +74,55 @@ impl World {
         &self.mesh
     }
 
+    pub fn recalculate_mesh_from_player_perspective(&mut self) {
+        self.recalculate_mesh_from_perspective(self.player_chunk_x, self.player_chunk_z);
+    }
+
     pub fn recalculate_mesh_from_perspective(&mut self, player_chunk_x: i32, player_chunk_z: i32) {
         let mut meshes = Vec::new();
         let mut chunks_in_view = Vec::new();
+
+        self.chunk_fetch_queue.clear();
         for x in 0..self.render_distance * 2 {
             let x = (x as i32) - (self.render_distance as i32) + player_chunk_x;
             for z in 0..self.render_distance * 2 {
                 let z = (z as i32) - (self.render_distance as i32) + player_chunk_z;
-                if distance(player_chunk_x, player_chunk_z, x, z) > self.render_distance as f32 {
+                if (((player_chunk_x - x).pow(2) + (player_chunk_z - z).pow(2)) as f32).sqrt() > self.render_distance as f32 {
                     continue;
                 }
 
-                self.get_or_insert_chunk(x, z);
-                self.get_or_insert_chunk(x + 1, z);
-                self.get_or_insert_chunk(x - 1, z);
-                self.get_or_insert_chunk(x, z + 1);
-                self.get_or_insert_chunk(x, z - 1);
-                chunks_in_view.push((x, z));
+                let contains_chunk = self.contains_chunk(x, z);
+                let contains_chunk_right = self.contains_chunk(x + 1, z);
+                let contains_chunk_left = self.contains_chunk(x - 1, z);
+                let contains_chunk_front = self.contains_chunk(x, z + 1);
+                let contains_chunk_back = self.contains_chunk(x, z - 1);
+                if contains_chunk
+                        && contains_chunk_right
+                        && contains_chunk_left
+                        && contains_chunk_front
+                        && contains_chunk_back {
+                    chunks_in_view.push((x, z));
+                } else {
+                    if !contains_chunk {
+                        self.chunk_fetch_queue.insert((x, z));
+                    }
+
+                    if !contains_chunk_right {
+                        self.chunk_fetch_queue.insert((x + 1, z));
+                    }
+
+                    if !contains_chunk_left {
+                        self.chunk_fetch_queue.insert((x - 1, z));
+                    }
+
+                    if !contains_chunk_front {
+                        self.chunk_fetch_queue.insert((x, z + 1));
+                    }
+
+                    if !contains_chunk_back {
+                        self.chunk_fetch_queue.insert((x, z - 1));
+                    }
+                }
             }
         }
 
@@ -138,38 +147,47 @@ impl World {
             meshes.push(chunk.mesh.clone());
         }
 
+        // fetch chunks
+        if self.chunk_fetch_queue.len() > 0 {
+            self.server_connection.send_message(RustyCraftMessage::GetChunks { coords: self.chunk_fetch_queue.clone().into_iter().collect() })
+                .expect("Failed to request batch of chunks")
+        }
+
         self.mesh = meshes;
     }
 
-    pub fn get_or_insert_chunk(&mut self, chunk_x: i32, chunk_z: i32) -> &Chunk {
-        match self.chunks.contains(chunk_x, chunk_z) {
-            true => self.chunks.get(chunk_x, chunk_z).unwrap(),
-            false => {
-                let c = Chunk::new(chunk_x, chunk_z, self.simplex.clone(), format!("{}/chunks", self.save_dir));
-                self.chunks.insert(chunk_x, chunk_z, c);
-                self.chunks.get(chunk_x, chunk_z).unwrap()
-            }
+    pub fn insert_serialized_chunk(&mut self, chunk_x: i32, chunk_z: i32, serialized_chunk: String) {
+        let chunk = ServerChunk::from_serialized(serialized_chunk, chunk_x, chunk_z);
+        self.chunks.insert(chunk_x, chunk_z, chunk);
+        self.chunk_fetch_queue.remove(&(chunk_x, chunk_z));
+
+        // when all chunks requested have been fetched re-render mesh
+        if self.chunk_fetch_queue.len() == 0 {
+            self.recalculate_mesh_from_perspective(self.player_chunk_x, self.player_chunk_z);
         }
     }
 
-    pub fn get_chunk_mut(&mut self, chunk_x: i32, chunk_z: i32) -> Option<&mut Chunk> {
+    pub fn get_chunk_mut(&mut self, chunk_x: i32, chunk_z: i32) -> Option<&mut ServerChunk> {
         match self.chunks.contains(chunk_x, chunk_z) {
             true => self.chunks.get_mut(chunk_x, chunk_z),
             false => None
         }
     }
 
-    pub fn get_chunk(&self, chunk_x: i32, chunk_z: i32) -> Option<&Chunk> {
-        self.chunks.get(chunk_x, chunk_z)
+    fn contains_chunk(&self, chunk_x: i32, chunk_z: i32) -> bool {
+        self.chunks.contains(chunk_x, chunk_z)
     }
 
     pub fn set_block(&mut self, world_x: i32, world_y: i32, world_z: i32, block: BlockType) {
-        let (chunk_x, chunk_z, local_x, local_z) = localize_coords_to_chunk(world_x, world_z);
+        let (chunk_x, chunk_z, local_x, local_z) = self.localize_coords_to_chunk(world_x, world_z);
 
         // set block
         {
-            let chunk = self.get_chunk_mut(chunk_x, chunk_z).unwrap();
-            chunk.set_block(local_x, world_y as usize, local_z, block);
+            let chunk = self.get_chunk_mut(chunk_x, chunk_z);
+            match chunk {
+                Some(chunk) => chunk.set_block(local_x, world_y as usize, local_z, block),
+                None => return
+            }
         }
 
         // update chunk mesh
@@ -195,6 +213,26 @@ impl World {
         let mesh = chunk.gen_mesh(right_chunk, left_chunk, front_chunk, back_chunk); 
 
         self.get_chunk_mut(chunk_x, chunk_z).unwrap().mesh = mesh;
+    }
+
+    pub fn get_chunk(&self, chunk_x: i32, chunk_z: i32) -> Option<&ServerChunk> {
+        self.chunks.get(chunk_x, chunk_z)
+    }
+
+    pub fn localize_coords_to_chunk(&self, world_x: i32, world_z: i32) -> (i32, i32, usize, usize) {
+        let mut chunk_x = (world_x + if world_x < 0 { 1 } else { 0 }) / 16;
+        if world_x < 0 {
+            chunk_x -= 1;
+        }
+
+        let mut chunk_z = (world_z + if world_z < 0 { 1 } else { 0 }) / 16;
+        if world_z < 0 { 
+            chunk_z -= 1;
+        }
+
+        let local_x = ((chunk_x.abs() * 16 + world_x) % 16).abs() as usize;
+        let local_z = ((chunk_z.abs() * 16 + world_z) % 16).abs() as usize;
+        (chunk_x, chunk_z, local_x, local_z)
     }
 
     pub fn raymarch_block(&mut self, position: &Vector3<f32>, direction: &Vector3<f32>) -> Option<((i32, i32, i32), Option<Face>)> {

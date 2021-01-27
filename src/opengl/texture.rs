@@ -1,7 +1,7 @@
 use std::{ffi::c_void, path::Path};
 
 use gl::types::*;
-use image::{ColorType, DynamicImage, GenericImage};
+use image::{ColorType, GenericImage};
 
 #[derive(Clone, Copy)]
 pub struct Texture {

@@ -1,5 +1,5 @@
-use crate::models::{core::block_type::BlockType, traits::game_chunk::GameChunk};
-use crate::models::utils::world_utils::localize_coords_to_chunk;
+use crate::{core::block_type::BlockType, traits::game_chunk::GameChunk};
+use crate::utils::world_utils::localize_coords_to_chunk;
 
 pub trait GameWorld {
     fn get_block(&self, x: i32, y: i32, z: i32) -> Option<BlockType>;

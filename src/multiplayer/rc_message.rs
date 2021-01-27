@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::{core::block_type::BlockType, multiplayer::direction::Direction};
+use crate::{core::block_type::BlockType, multiplayer::direction::Direction};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum RustyCraftMessage {

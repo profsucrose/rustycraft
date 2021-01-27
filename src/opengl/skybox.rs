@@ -1,11 +1,5 @@
 #![allow(dead_code)]
-use std::ptr;
-
-use cgmath::{Matrix3, Matrix4, Vector3};
-
-use crate::models::opengl::{camera::Camera, shader::Shader, vertex_array::VertexArray, vertex_buffer::VertexBuffer};
-
-use super::{element_buffer::ElementBuffer};
+use crate::opengl::{camera::Camera, shader::Shader, vertex_array::VertexArray, vertex_buffer::VertexBuffer};
 
 pub struct SkyBox { 
     vao: VertexArray,
