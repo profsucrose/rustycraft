@@ -8,6 +8,7 @@ use gl::types::*;
 use image::{RgbaImage, GenericImage};
 use models::{core::{block_type::index_to_block, player::Player}, opengl::{tex_quad::TexQuad}};
 use noise::OpenSimplex;
+use rand::{Rng, thread_rng};
 use crate::models::{core::{block_type::BlockType, face::Face, window_mode::WindowMode, world::World}, multiplayer::{rc_message::RustyCraftMessage, server_connection::ServerConnection, server_state::ServerState, server_world::ServerWorld}, opengl::{button::Button, camera::Camera, cloud::Cloud, depth_framebuffer::{DepthFrameBuffer, SHADOW_HEIGHT, SHADOW_WIDTH}, framebuffer::FrameBuffer, input::Input, player_model::PlayerModel, shader::Shader, text_renderer::{TextJustification, TextRenderer}, texture::Texture, vertex_array::VertexArray, vertex_buffer::VertexBuffer}, traits::game_world::GameWorld, utils::{name_utils::gen_name, num_utils::distance, simplex_utils::sample}};
 
 // settings
@@ -192,6 +193,8 @@ unsafe fn start() {
 
     let mut show_gui = true;
 
+    let subtitle_text = get_subtitle_text();
+
     // render loop
     while !window.should_close() {
         let deltatime = instant.elapsed().as_millis() as f32;
@@ -375,11 +378,11 @@ unsafe fn start() {
                 // text
                 let x = (SCR_WIDTH / 2) as f32;
                 let y = SCR_HEIGHT as f32 - 220.0;
-                let subtitle_size = 0.9 + (yellow_text_size.sin() + 1.0) / 30.0;
-                text_renderer.render_text_with_mat("Shitty Minecraft -- in Rust!", 900.0 - subtitle_size * 100.0, y - 130.0, subtitle_size, Vector3::new(1.0, 1.0, 0.0), Matrix4::<f32>::from_angle_z(Deg(10.0)), TextJustification::Center);
+                let subtitle_size = 0.7 + (yellow_text_size.sin() + 1.0) / 30.0;
+                text_renderer.render_text_with_mat(subtitle_text.as_str(), 870.0 - subtitle_size * 100.0, y - 130.0, subtitle_size, Vector3::new(1.0, 1.0, 0.0), Matrix4::<f32>::from_angle_z(Deg(10.0)), TextJustification::Center);
                 text_renderer.render_text("RustyCraft", x, y, 3.5, Vector3::new(1.0, 0.0, 0.0), TextJustification::Center);
                 text_renderer.render_text("RustyCraft", x + 3.0, y - 3.0, 3.5, Vector3::new(173.0 / 255.0, 24.0 / 255.0, 24.0 / 255.0), TextJustification::Center);
-                text_renderer.render_text("v0.1", SCR_WIDTH as f32 - 65.0, 10.0, 0.9, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
+                text_renderer.render_text("v1.0", SCR_WIDTH as f32 - 60.0, 10.0, 0.9, Vector3::new(1.0, 1.0, 1.0), TextJustification::Left);
 
                 let last_y = SCR_HEIGHT as f32 - last_y;
                 match window_mode {
@@ -865,6 +868,21 @@ fn get_block_on_face(x: i32, y: i32, z: i32, face: &Face) -> (i32, i32, i32) {
         Face::Front => (x, y, z - 1),
         Face::Back => (x, y, z + 1),
     }
+}
+
+fn get_subtitle_text() -> String {
+    let mut rng = rand::thread_rng();
+    let s = match rng.gen_range(0..8) {
+        0 => "Bad Minecraft -- in Rust!",
+        1 => "Extra mutable aliasing!",
+        2 => "Unperformant, unreliable & unproductive!",
+        3 => "unsafe { Game::minecraft() }",
+        4 => "Make boredom subtype 'static!",
+        5 => "None.unwrap()",
+        6 => "The No. 1 Craft!",
+        _ => "Golang bad!"
+    };
+    String::from(s)
 }
 
 unsafe fn render_clouds(cloud: &Cloud, camera: &Camera, player_position: &Vector3<f32>, z_offset: f32, simplex: OpenSimplex) {
