@@ -1,7 +1,6 @@
 # rustycraft
 
-Simple Minecraft/Voxal Engine clone written in Rust and OpenGL:
-https://www.youtube.com/watch?v=aQJDXMxr6Z0
+Simple Minecraft/Voxal Engine clone written in Rust and OpenGL
 
 <img src="https://i.imgur.com/mIMRoGg.png">
 
