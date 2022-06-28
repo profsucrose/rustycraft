@@ -32,3 +32,7 @@ I myself am hosting a little RustyCraft server at `craft.profsucrose.dev`. Feel 
 
 ### Chat
 The functionality/"gameplay" is of course identical to playing locally, however you can send messages in the server chat by pressing `T`, typing your message and pressing `Return` to send it.
+
+## Notable Mentions
+Milse113 - Esteemed Rustycraft Extraordinare, Winner of the first and only semi-annual Rustycraft build battle, Worlds best programmer, Super spy
+
