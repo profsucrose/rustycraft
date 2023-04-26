@@ -10,7 +10,7 @@ edition = "2018"
 [dependencies]
 cgmath = "0.16.1"
 gl = "0.10.0"
-glfw = "0.23.0"
+glutin = "0.27.0"
 image = "0.19.0"
 freetype-rs = "0.26.0"
 noise = "0.7.0"
