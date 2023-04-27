@@ -8,7 +8,7 @@ mod utils;
 // imports
 use std::{fs, path::Path, sync::{Arc, Mutex, mpsc::Receiver}, time::Instant};
 use cgmath::{Deg, Matrix4, Vector3};
-use glfw::{Action, Context, CursorMode, Key, MouseButton, PixelImage, WindowEvent};
+use glutin::{ContextBuilder, dpi::{PhysicalPosition, PhysicalSize}, event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent}, event_loop::{ControlFlow, EventLoop}, window::WindowBuilder};
 use image::GenericImage;
 use noise::OpenSimplex;
 use gl::types::*;
@@ -23,6 +23,7 @@ const SERVER_RENDER_DISTANCE: u32 = 10;
 const LOCAL_RENDER_DISTANCE: u32 = 20;
 
 fn main() {
+    // unsafe { println!("{:?}", gl::GetString(gl::VERSION)); }
     // wrap program in helper
     // for unsafe block w/o indentation
     unsafe { start(); }
@@ -30,41 +31,23 @@ fn main() {
 
 unsafe fn start() {
     // glfw: initialize
-    let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
-    glfw.window_hint(glfw::WindowHint::ContextVersion(3, 3));
-    glfw.window_hint(glfw::WindowHint::OpenGlProfile(glfw::OpenGlProfileHint::Core));
-    #[cfg(target_os = "macos")]
-    glfw.window_hint(glfw::WindowHint::OpenGlForwardCompat(true)); 
+    let el = EventLoop::new();
+    let wb = WindowBuilder::new().with_title("A fantastic window!");
 
-    // glfw window creation
-    let (mut window, events) = glfw.create_window(SCR_WIDTH, SCR_HEIGHT, "Rus", glfw::WindowMode::Windowed)
-        .expect("Failed to create GLFW window");
+    let windowed_context = ContextBuilder::new().build_windowed(wb, &el).unwrap();
 
-    window.make_current();
-    window.set_key_polling(true);
-    window.set_cursor_pos_polling(true);
-    window.set_framebuffer_size_polling(true);
-    window.set_scroll_polling(true);
-    window.set_mouse_button_polling(true);
-    window.set_title("RustyCraft");
+    let windowed_context = unsafe { windowed_context.make_current().unwrap() };
+
+    println!("Pixel format of the window's GL context: {:?}", windowed_context.get_pixel_format());
 
     // set window icon; note that on MacOS this does nothing
     // as the icon must be set via .app bundling
-    let icon = image::open(&Path::new("assets/textures/icon.png"))
-        .expect("Failed to load texture");
-    let pixels = icon.raw_pixels().iter().map(|pixel| *pixel as u32).collect();
-    let glfw_image = PixelImage {
-        width: icon.width(),
-        height: icon.height(),
-        pixels
-    };
-    window.set_icon_from_pixels(vec![glfw_image]);
 
     // capture mouse
     let mut mouse_captured = true;
 
     // gl: load all OpenGL function pointers
-    gl::load_with(|symbol| window.get_proc_address(symbol) as *const _);
+    gl::load_with(|symbol| windowed_context.get_proc_address(symbol) as *const _);
 
     // depth buffer
     gl::Enable(gl::DEPTH_TEST);
@@ -198,9 +181,17 @@ unsafe fn start() {
     let mut show_gui = true;
 
     let subtitle_text = get_subtitle_text();
+
+    let mut should_close = false;
     
     // render loop
-    while !window.should_close() {
+    el.run(move |event, _, control_flow| {
+        if should_close {
+            *control_flow = ControlFlow::Exit;
+        } else {
+            *control_flow = ControlFlow::Wait;
+        }
+
         let deltatime = instant.elapsed().as_millis() as f32;
         instant = Instant::now();
         time += 0.01;
@@ -210,9 +201,7 @@ unsafe fn start() {
 
         cloud_z_offset += 0.01;
 
-        let (screen_width, screen_height) = window.get_size();
-        let screen_width = screen_width as u32;
-        let screen_height = screen_height as u32;
+        let PhysicalSize { width: screen_width, height: screen_height } = windowed_context.window().inner_size();
 
         // clear buffers
         gl::ClearColor(29.0 / 255.0, 104.0 / 255.0, 224.0 / 255.0, 1.0);
@@ -221,23 +210,23 @@ unsafe fn start() {
         gl::Enable(gl::DEPTH_TEST);
         match window_mode {
             WindowMode::Title | WindowMode::OpenWorld | WindowMode::ConnectToServer => {
-                for (_, event) in glfw::flush_messages(&events) {
-                    match event {
-                        WindowEvent::FramebufferSize(width, height) => {
-                            gl::Viewport(0, 0, width, height) 
+                match event {
+                    Event::WindowEvent { event, .. } => match event {
+                        WindowEvent::Resized(PhysicalSize { width, height }) => {
+                            gl::Viewport(0, 0, width as i32, height as i32) 
                         },
-                        WindowEvent::CursorPos(x, y) => {
+                        WindowEvent::CursorMoved { position: PhysicalPosition { x, y }, .. } => {
                             last_x = x as f32;
                             last_y = y as f32;
                         },
-                        WindowEvent::MouseButton(MouseButton::Button1, Action::Press, _) => {
+                        WindowEvent::MouseInput { state: ElementState::Pressed, .. } => {
                             let last_y = SCR_HEIGHT as f32 - last_y;
                             match window_mode {
                                 WindowMode::Title => {
                                     if select_worlds_button.is_hovered(last_x, last_y, screen_width, screen_height) {
                                         window_mode = WindowMode::OpenWorld;
                                     }
-        
+                                
                                     if connect_to_server_button.is_hovered(last_x, last_y, screen_width, screen_height) {
                                         window_mode = WindowMode::ConnectToServer;
                                     }
@@ -272,10 +261,10 @@ unsafe fn start() {
                                         } else {
                                             player.camera.position.y = world_object.highest_in_column(0, 0).unwrap() as f32 + 2.0;
                                         }
-                                        
+
                                         world = Some(world_object);
                                         window_mode = WindowMode::InWorld;
-                                        window.set_cursor_mode(CursorMode::Disabled);
+                                        windowed_context.window().set_cursor_visible(false);
                                         current_block_index = 0;
                                         fs::write("game_data/last_world", open_world_input.text.clone())
                                             .expect("Failed to write world input text to file");
@@ -300,7 +289,7 @@ unsafe fn start() {
                                                     .expect("Failed to set name on join");
                                                 connection.clone().create_listen_thread(server_state.clone().unwrap());
                                                 server_connection = Some(connection.clone());
-                                                window.set_cursor_mode(CursorMode::Disabled);
+                                                windowed_context.window().set_cursor_visible(true);
                                                 window_mode = WindowMode::InServer;
                                                 fs::write("game_data/last_server", address.clone())
                                                     .expect("Failed to write world input text to file");
@@ -320,23 +309,27 @@ unsafe fn start() {
                                 _ => ()
                             }
                         },
-                        WindowEvent::Key(Key::Escape, _, Action::Press, _) => window.set_should_close(true),
-                        WindowEvent::Key(Key::LeftShift, _, Action::Press, _) => shift_pressed = true,
-                        WindowEvent::Key(Key::LeftShift, _, Action::Release, _) => shift_pressed = false,
-                        WindowEvent::Key(key, _, Action::Press, _) => {
-                            match window_mode {
-                                WindowMode::OpenWorld => {
-                                    open_world_input.type_key(key, shift_pressed, &text_renderer);
-                                },
-                                WindowMode::ConnectToServer => {
-                                    connect_to_server_input.type_key(key, shift_pressed, &text_renderer);
-                                    server_player_name_input.type_key(key, shift_pressed, &text_renderer);
-                                },
-                                _ => ()
+                        WindowEvent::KeyboardInput { input: KeyboardInput { state: ElementState::Pressed, virtual_keycode: Some(keycode), .. }, .. } => {
+                            match keycode {
+                                VirtualKeyCode::Escape => should_close = true,
+                                // VirtualKeyCode::Escape => should_pressed = true,
+                                _ => {
+                                    match window_mode {
+                                        WindowMode::OpenWorld => {
+                                            open_world_input.type_key(keycode, shift_pressed, &text_renderer);
+                                        },
+                                        WindowMode::ConnectToServer => {
+                                            connect_to_server_input.type_key(keycode, shift_pressed, &text_renderer);
+                                            server_player_name_input.type_key(keycode, shift_pressed, &text_renderer);
+                                        },
+                                        _ => ()
+                                    } 
+                                }
                             }
                         },
                         _ => ()
-                    }
+                    },
+                    _ => ()
                 }
 
                 // if window mode was changed to InWorld:
@@ -735,12 +728,11 @@ unsafe fn start() {
         // gl::Clear(gl::COLOR_BUFFER_BIT);
         // framebuffer.draw();
 
-        window.swap_buffers();
-        glfw.poll_events();
+        windowed_context.swap_buffers().unwrap();
 
         // hang thread for target FPS
         while (instant.elapsed().as_millis() as f32) < (1000.0 / target_fps) {}
-    }
+    });
 }
 
 fn process_events(window: &mut glfw::Window, events: &Receiver<(f64, glfw::WindowEvent)>, show_gui: &mut bool, mouse_captured: &mut bool, selected_coords: &Option<((i32, i32, i32), Option<Face>)>, world: &mut World, player: &mut Player, last_x: &mut f32, last_y: &mut f32, first_mouse: &mut bool, force_recalculation: &mut bool, current_block_index: &mut usize, window_mode: &mut WindowMode) {
